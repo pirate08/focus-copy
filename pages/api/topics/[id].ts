@@ -8,33 +8,17 @@ export default async function handler(
   const { id } = req.query;
   if (!id || Array.isArray(id)) return res.status(400).end();
 
-  if (req.method === "GET") {
-    const db = await getDb();
-    if (!db) {
-      return res.status(200).json(null);
-    }
-
-    const coll = db.collection("notes");
-    const item = normalizeDocument(await coll.findOne({ id }));
-    if (!item) return res.status(404).json({ message: "Note not found" });
-    return res.status(200).json(item);
-  }
-
   if (req.method === "PUT") {
     const db = await getDb();
     if (!db) {
       return res.status(503).json({ message: "MongoDB is not configured" });
     }
 
-    const body = {
-      ...(req.body ?? {}),
-      updated_at: req.body?.updated_at ?? new Date().toISOString(),
-    };
-
-    const coll = db.collection("notes");
+    const body = req.body ?? {};
+    const coll = db.collection("topics");
     await coll.updateOne({ id }, { $set: body });
     const item = normalizeDocument(await coll.findOne({ id }));
-    if (!item) return res.status(404).json({ message: "Note not found" });
+    if (!item) return res.status(404).json({ message: "Topic not found" });
     return res.status(200).json(item);
   }
 
