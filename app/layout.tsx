@@ -1,24 +1,31 @@
-import './globals.css';
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 
-const inter = Inter({ subsets: ['latin'] });
+
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+// @ts-expect-error CSS imports are handled by Next.js
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
+
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 export const metadata: Metadata = {
-  title: 'Focus / Copy — UPSC Study Desk',
-  description: 'A calm, structured workspace for UPSC preparation notes.',
+  metadataBase: new URL(baseUrl),
+
+  title: "Focus / Copy — UPSC Study Desk",
+  description: "A calm, structured workspace for UPSC preparation notes.",
   openGraph: {
     images: [
       {
-        url: 'https://bolt.new/static/og_default.png',
+        url: "/static/og_default.png", // Use relative path
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
+    card: "summary_large_image",
     images: [
       {
-        url: 'https://bolt.new/static/og_default.png',
+        url: "/static/og_default.png", // Use relative path
       },
     ],
   },
