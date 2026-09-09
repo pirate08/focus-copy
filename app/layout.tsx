@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   openGraph: {
     images: [
       {
-        url: "/static/og_default.png", // Use relative path
+        url: "/static/og_default.png",
       },
     ],
   },
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     images: [
       {
-        url: "/static/og_default.png", // Use relative path
+        url: "/static/og_default.png",
       },
     ],
   },
