@@ -6,6 +6,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { MapRoom } from "./MapRoom";
 import { Splitter } from "./Splitter";
 import { StealthDashboard } from "./StealthDashboard";
+import { useCurriculum } from "./useCurriculum";
+import { useNote } from "./useNote";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
@@ -95,53 +97,18 @@ function AppIcon({ name, size = 17 }: { name: string | null; size?: number }) {
 }
 
 export default function StudyWorkspace() {
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [selectedTopicId, setSelectedTopicId] = useState("");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  // PDF and Map panels are now independent. Each has its own open flag,
-  // so any combination (neither / one / both) can be visible at once.
-  const [isPdfOpen, setIsPdfOpen] = useState(false);
-  const [isMapOpen, setIsMapOpen] = useState(false);
-  const [pdfSplitWidth, setPdfSplitWidth] = useState(520);
-  const [pdfZoom, setPdfZoom] = useState(1);
-  const [pdfPage, setPdfPage] = useState(1);
-  const [pdfDocumentName, setPdfDocumentName] = useState(
-    "UPSC Geography Syllabus",
-  );
-  const [showSyllabus, setShowSyllabus] = useState(false);
-  const [showStealth, setShowStealth] = useState(false);
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const [query, setQuery] = useState("");
-  const [paperStyle, setPaperStyle] = useState<"lined" | "grid" | "blank">(
-    "lined",
-  );
-  const [tags, setTags] = useState<StudyTag[]>([]);
-  const [noteId, setNoteId] = useState<string | null>(null);
-  const [noteTitle, setNoteTitle] = useState("Untitled note");
-  const [saveStatus, setSaveStatus] = useState("Ready to save");
-  const [pdfName, setPdfName] = useState<string | null>(null);
-  const [pdfDocuments, setPdfDocuments] = useState<
-    Array<{ id: string; name: string; uploadedAt?: string | null }>
-  >([]);
-  const [selectedPdfId, setSelectedPdfId] = useState<string | null>(null);
-  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
-  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
-  const [mapUndoCount, setMapUndoCount] = useState(0);
-  const editorLayoutRef = useRef<HTMLDivElement | null>(null);
-  const dragStateRef = useRef({ active: false, startX: 0, startWidth: 0 });
-  const mapHistoryRef = useRef<string[]>([]);
-  const [activeMap, setActiveMap] =
-    useState<(typeof mapOptions)[number]["id"]>("india_political");
-  const [drawingTool, setDrawingTool] = useState<DrawingTool>("pen");
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [mapWidth, setMapWidth] = useState(400);
-  const [isDraggingMap, setIsDraggingMap] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const {
+    subjects,
+    setSubjects,
+    topics,
+    setTopics,
+    selectedTopicId,
+    setSelectedTopicId,
+    expanded,
+    setExpanded,
+    selectedTopic,
+  } = useCurriculum();
 
-  const selectedTopic =
-    topics.find((topic) => topic.id === selectedTopicId) ?? topics[0];
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -163,25 +130,53 @@ export default function StudyWorkspace() {
     onUpdate: () => setSaveStatus("Unsaved changes"),
   });
 
-  const loadData = useCallback(async () => {
-    try {
-      const [subjectsRes, topicsRes] = await Promise.all([
-        fetch("/api/subjects"),
-        fetch("/api/topics"),
-      ]);
-      if (!subjectsRes.ok || !topicsRes.ok) return;
-      const subjectData = await subjectsRes.json();
-      const topicData = await topicsRes.json();
-      if (Array.isArray(subjectData) && subjectData.length)
-        setSubjects(subjectData as Subject[]);
-      if (Array.isArray(topicData) && topicData.length) {
-        setTopics(topicData as Topic[]);
-        setSelectedTopicId((topicData as Topic[])[0].id);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
+  const {
+    noteId,
+    setNoteId,
+    noteTitle,
+    setNoteTitle,
+    tags,
+    setTags,
+    paperStyle,
+    setPaperStyle,
+    saveStatus,
+    setSaveStatus,
+    loadNoteForTopic,
+  } = useNote(editor);
+
+  // PDF and Map panels are now independent. Each has its own open flag,
+  // so any combination (neither / one / both) can be visible at once.
+  const [isPdfOpen, setIsPdfOpen] = useState(false);
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const [pdfSplitWidth, setPdfSplitWidth] = useState(520);
+  const [pdfZoom, setPdfZoom] = useState(1);
+  const [pdfPage, setPdfPage] = useState(1);
+  const [pdfDocumentName, setPdfDocumentName] = useState(
+    "UPSC Geography Syllabus",
+  );
+  const [showSyllabus, setShowSyllabus] = useState(false);
+  const [showStealth, setShowStealth] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [query, setQuery] = useState("");
+  const [pdfName, setPdfName] = useState<string | null>(null);
+  const [pdfDocuments, setPdfDocuments] = useState<
+    Array<{ id: string; name: string; uploadedAt?: string | null }>
+  >([]);
+  const [selectedPdfId, setSelectedPdfId] = useState<string | null>(null);
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
+  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+  const [mapUndoCount, setMapUndoCount] = useState(0);
+  const editorLayoutRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef({ active: false, startX: 0, startWidth: 0 });
+  const mapHistoryRef = useRef<string[]>([]);
+  const [activeMap, setActiveMap] =
+    useState<(typeof mapOptions)[number]["id"]>("india_political");
+  const [drawingTool, setDrawingTool] = useState<DrawingTool>("pen");
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [mapWidth, setMapWidth] = useState(400);
+  const [isDraggingMap, setIsDraggingMap] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const loadPdfDocuments = useCallback(async () => {
     try {
@@ -201,56 +196,9 @@ export default function StudyWorkspace() {
     }
   }, [selectedPdfId]);
 
-  const loadNoteForTopic = useCallback(
-    async (topicId: string) => {
-      try {
-        const res = await fetch(
-          `/api/notes?topicId=${encodeURIComponent(topicId)}`,
-        );
-        if (!res.ok) {
-          setNoteId(null);
-          setNoteTitle("Untitled note");
-          setTags([]);
-          setPaperStyle("lined");
-          editor?.commands.setContent({ type: "doc", content: [] });
-          return;
-        }
-
-        const data = await res.json();
-        const note = Array.isArray(data) && data.length ? data[0] : null;
-
-        if (!note) {
-          setNoteId(null);
-          setNoteTitle("Untitled note");
-          setTags([]);
-          setPaperStyle("lined");
-          editor?.commands.setContent({ type: "doc", content: [] });
-          return;
-        }
-
-        setNoteId(note.id ?? note._id ?? null);
-        setNoteTitle(note.title ?? "Untitled note");
-        setTags(Array.isArray(note.tags) ? (note.tags as StudyTag[]) : []);
-        setPaperStyle(
-          (note.paperStyle ?? note.paper_style ?? "lined") as
-            | "lined"
-            | "grid"
-            | "blank",
-        );
-        editor?.commands.setContent(
-          note.content ?? { type: "doc", content: [] },
-        );
-      } catch (err) {
-        console.error(err);
-      }
-    },
-    [editor],
-  );
-
   useEffect(() => {
-    void loadData();
     void loadPdfDocuments();
-  }, [loadData, loadPdfDocuments]);
+  }, [loadPdfDocuments]);
 
   useEffect(() => {
     if (!editor || !selectedTopicId) return;
