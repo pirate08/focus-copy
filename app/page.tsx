@@ -49,6 +49,7 @@ import {
   NotebookPen,
   Pen,
   Plus,
+  RotateCcw,
   Save,
   Scale,
   Search,
@@ -119,8 +120,10 @@ export default function Home() {
   const [saveStatus, setSaveStatus] = useState("Ready to save");
   const [pdfName, setPdfName] = useState<string | null>(null);
   const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+  const [mapUndoCount, setMapUndoCount] = useState(0);
   const editorLayoutRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef({ active: false, startX: 0, startWidth: 0 });
+  const mapHistoryRef = useRef<string[]>([]);
   const [activeMap, setActiveMap] =
     useState<(typeof mapOptions)[number]["id"]>("india_political");
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pen");
@@ -199,6 +202,25 @@ export default function Home() {
       );
     }
   }, [pdfSplitWidth]);
+  const undoMapCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || mapHistoryRef.current.length === 0) return;
+
+    const previousSnapshot = mapHistoryRef.current.pop();
+    if (!previousSnapshot) return;
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    const image = new Image();
+    image.onload = () => {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    };
+    image.src = previousSnapshot;
+    setMapUndoCount(mapHistoryRef.current.length);
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const isPdfShortcut =
@@ -217,6 +239,14 @@ export default function Home() {
         return;
       }
 
+      const isMapUndoShortcut =
+        (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z";
+      if (isMapUndoShortcut && showMapRoom) {
+        event.preventDefault();
+        undoMapCanvas();
+        return;
+      }
+
       if (
         event.key === "Escape" ||
         (event.altKey && event.key.toLowerCase() === "k")
@@ -225,7 +255,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPdfOpen, splitMode]);
+  }, [isPdfOpen, showMapRoom, splitMode, undoMapCanvas]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -350,6 +380,14 @@ export default function Home() {
   };
 
   const beginDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const snapshot = canvas.toDataURL();
+    if (mapHistoryRef.current.length >= 15) {
+      mapHistoryRef.current.shift();
+    }
+    mapHistoryRef.current.push(snapshot);
+    setMapUndoCount(mapHistoryRef.current.length);
+
     if (drawingTool === "pin") {
       const rect = event.currentTarget.getBoundingClientRect();
       const context = event.currentTarget.getContext("2d");
@@ -387,6 +425,7 @@ export default function Home() {
   };
 
   const isPdfSplitOpen = splitMode === "pdf" && isPdfOpen;
+  const isMapOpen = splitMode === "map" || showMapRoom;
 
   const openPdfPane = useCallback(() => {
     setIsPdfOpen(true);
@@ -658,10 +697,23 @@ export default function Home() {
                 <FileText size={15} /> Reference PDF
               </button>
               <button
-                className={`tool-button ${splitMode === "map" ? "active" : ""}`}
-                onClick={() =>
-                  setSplitMode(splitMode === "map" ? "none" : "map")
-                }
+                className={`tool-button ${isMapOpen ? "active" : ""}`}
+                onClick={() => {
+                  if (isPdfOpen) {
+                    setShowMapRoom((value) => !value);
+                    setSplitMode("map");
+                    return;
+                  }
+
+                  if (splitMode === "map") {
+                    setSplitMode("none");
+                    setShowMapRoom(false);
+                    return;
+                  }
+
+                  setSplitMode("map");
+                  setShowMapRoom(true);
+                }}
               >
                 <Map size={15} /> Map practice
               </button>
@@ -996,6 +1048,8 @@ export default function Home() {
                   setIsDrawing={setIsDrawing}
                   onClose={() => setSplitMode("none")}
                   onSave={() => setSaveStatus("Map snapshot ready")}
+                  onUndo={undoMapCanvas}
+                  canUndo={mapUndoCount > 0}
                 />
               </aside>
             )}
@@ -1045,6 +1099,8 @@ export default function Home() {
                 setShowMapRoom(false);
                 setSaveStatus("Map snapshot ready");
               }}
+              onUndo={undoMapCanvas}
+              canUndo={mapUndoCount > 0}
             />
           </div>
         </div>
@@ -1117,6 +1173,8 @@ function MapRoom({
   setIsDrawing,
   onClose,
   onSave,
+  onUndo,
+  canUndo,
 }: {
   compact?: boolean;
   activeMap: (typeof mapOptions)[number]["id"];
@@ -1129,6 +1187,8 @@ function MapRoom({
   setIsDrawing: (value: boolean) => void;
   onClose: () => void;
   onSave: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
 }) {
   return (
     <div className={`map-room ${compact ? "compact" : ""}`}>
@@ -1180,6 +1240,9 @@ function MapRoom({
             </button>
           ))}
           <span className="toolbar-separator" />
+          <button title="Undo" onClick={onUndo} disabled={!canUndo}>
+            <RotateCcw size={17} />
+          </button>
           <button title="Clear">
             <MoreHorizontal size={17} />
           </button>
