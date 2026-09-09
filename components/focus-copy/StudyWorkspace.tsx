@@ -5,6 +5,7 @@ import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { BottomInsights } from "./BottomInsights";
+import { CurriculumCreateModal } from "./CurriculumCreateModal";
 import { MapPanel } from "./MapPanel";
 import { NoteEditorPanel } from "./NoteEditorPanel";
 import { PageToolbar } from "./PageToolbar";
@@ -94,6 +95,17 @@ export default function StudyWorkspace() {
   const [showSyllabus, setShowSyllabus] = useState(false);
   const [showStealth, setShowStealth] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [curriculumModal, setCurriculumModal] = useState<{
+    open: boolean;
+    type: "subject" | "chapter" | "topic";
+    subjectId?: string;
+    parentId?: string | null;
+  }>({
+    open: false,
+    type: "subject",
+    subjectId: undefined,
+    parentId: null,
+  });
   const [darkMode, setDarkMode] = useState(false);
   const [query, setQuery] = useState("");
   const [pdfName, setPdfName] = useState<string | null>(null);
@@ -324,22 +336,90 @@ export default function StudyWorkspace() {
     }
   };
 
-  const addTopic = async (subjectId: string) => {
-    const name = window.prompt("Name this new chapter");
-    if (!name?.trim()) return;
-    try {
-      const res = await fetch("/api/topics", {
+  const submitCurriculumItem = async ({
+    name,
+    icon,
+    subjectId,
+    parentId,
+  }: {
+    name: string;
+    icon?: string;
+    subjectId?: string;
+    parentId?: string | null;
+  }) => {
+    if (curriculumModal.type === "subject") {
+      const nextSortOrder =
+        subjects.reduce((max, item) => Math.max(max, item.sort_order ?? 0), 0) +
+        1;
+
+      const res = await fetch("/api/subjects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subjectId, name: name.trim(), sortOrder: 99 }),
+        body: JSON.stringify({
+          name,
+          icon: icon ?? "book-open",
+          sortOrder: nextSortOrder,
+        }),
       });
-      if (!res.ok) return;
-      const newTopic = await res.json();
-      setTopics((items) => [...items, newTopic as Topic]);
-      setSelectedTopicId((newTopic as Topic).id);
-    } catch (err) {
-      console.error(err);
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Failed to create a subject.");
+      }
+
+      const createdSubject = data as (typeof subjects)[number];
+      setSubjects((items) => [...items, createdSubject]);
+      setExpanded((items) => ({ ...items, [createdSubject.id]: true }));
+      return;
     }
+
+    const targetSubjectId = subjectId ?? curriculumModal.subjectId;
+    if (!targetSubjectId) {
+      throw new Error("Please choose a subject first.");
+    }
+
+    const nextSortOrder =
+      topics
+        .filter(
+          (item) =>
+            item.subject_id === targetSubjectId &&
+            (parentId ? item.parent_id === parentId : !item.parent_id),
+        )
+        .reduce((max, item) => Math.max(max, item.sort_order ?? 0), 0) + 1;
+
+    const res = await fetch("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        subjectId: targetSubjectId,
+        parentId: parentId ?? null,
+        name,
+        sortOrder: nextSortOrder,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Failed to create curriculum item.");
+    }
+
+    const createdTopic = data as Topic;
+    setTopics((items) => [...items, createdTopic]);
+    setExpanded((items) => ({ ...items, [targetSubjectId]: true }));
+    setSelectedTopicId(createdTopic.id);
+  };
+
+  const openCurriculumModal = (
+    type: "subject" | "chapter" | "topic",
+    subjectId?: string,
+    parentId?: string | null,
+  ) => {
+    setCurriculumModal({
+      open: true,
+      type,
+      subjectId,
+      parentId: parentId ?? null,
+    });
   };
 
   const beginDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -424,11 +504,14 @@ export default function StudyWorkspace() {
             setSelectedTopicId(topicId);
             setShowMobileSidebar(false);
           }}
-          onAddTopic={addTopic}
-          onOpenSidebar={() => setShowMobileSidebar(false)}
-          onCreateSubject={() =>
-            window.alert("Create a new subject from the subject tree.")
+          onAddChapter={(subjectId) =>
+            openCurriculumModal("chapter", subjectId)
           }
+          onAddTopic={(subjectId, parentId) =>
+            openCurriculumModal("topic", subjectId, parentId)
+          }
+          onOpenSidebar={() => setShowMobileSidebar(false)}
+          onCreateSubject={() => openCurriculumModal("subject")}
         />
         <main className="main-area">
           <PageToolbar
@@ -570,6 +653,17 @@ export default function StudyWorkspace() {
         subjects={subjects}
         onClose={() => setShowSyllabus(false)}
         onToggleTopic={toggleSyllabus}
+      />
+
+      <CurriculumCreateModal
+        open={curriculumModal.open}
+        type={curriculumModal.type}
+        subjectId={curriculumModal.subjectId}
+        parentId={curriculumModal.parentId}
+        onClose={() =>
+          setCurriculumModal((current) => ({ ...current, open: false }))
+        }
+        onSubmit={submitCurriculumItem}
       />
     </div>
   );

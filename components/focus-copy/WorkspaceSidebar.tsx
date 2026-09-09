@@ -25,7 +25,8 @@ type WorkspaceSidebarProps = {
   onSearch: (value: string) => void;
   onToggleExpanded: (subjectId: string) => void;
   onSelectTopic: (topicId: string) => void;
-  onAddTopic: (subjectId: string) => void;
+  onAddChapter: (subjectId: string) => void;
+  onAddTopic: (subjectId: string, parentId?: string | null) => void;
   onOpenSidebar: () => void;
   onCreateSubject: () => void;
 };
@@ -43,6 +44,7 @@ export function WorkspaceSidebar({
   onSearch,
   onToggleExpanded,
   onSelectTopic,
+  onAddChapter,
   onAddTopic,
   onOpenSidebar,
   onCreateSubject,
@@ -69,11 +71,13 @@ export function WorkspaceSidebar({
         />
       </div>
       <div className="tree-list">
-        {filteredSubjects.map((subject) => {
-          const subjectTopics = topics.filter(
+        {filteredSubjects.map((subject, subjectIndex) => {
+          const subjectChapters = topics.filter(
             (topic) => topic.subject_id === subject.id && !topic.parent_id,
           );
           const isOpen = expanded[subject.id] ?? subject.name === "Geography";
+          const subjectNumber = `${subjectIndex + 1}`;
+
           return (
             <div className="tree-group" key={subject.id}>
               <div
@@ -90,13 +94,15 @@ export function WorkspaceSidebar({
                 <span className="subject-icon">
                   <AppIcon name={subject.icon} />
                 </span>
-                <span className="tree-label">{subject.name}</span>
-                <span className="tree-count">{subjectTopics.length}</span>
+                <span className="tree-label">
+                  {subjectNumber}. {subject.name}
+                </span>
+                <span className="tree-count">{subjectChapters.length}</span>
                 <button
                   className="tree-add"
                   onClick={(event) => {
                     event.stopPropagation();
-                    onAddTopic(subject.id);
+                    onAddChapter(subject.id);
                   }}
                 >
                   <Plus size={14} />
@@ -104,23 +110,55 @@ export function WorkspaceSidebar({
               </div>
               {isOpen && (
                 <div className="nested-list">
-                  {subjectTopics.map((topic) => (
-                    <div key={topic.id}>
-                      <div
-                        className={`tree-row topic-row ${selectedTopicId === topic.id ? "selected" : ""}`}
-                        onClick={() => {
-                          onSelectTopic(topic.id);
-                          onOpenSidebar();
-                        }}
-                      >
-                        <span className="topic-dot" />
-                        <span className="tree-label">{topic.name}</span>
-                        {topic.syllabus_checked && (
-                          <Check size={13} className="done-check" />
+                  {subjectChapters.map((chapter, chapterIndex) => {
+                    const chapterTopics = topics.filter(
+                      (topic) => topic.parent_id === chapter.id,
+                    );
+                    const chapterLabel = `${subjectNumber}.${chapterIndex + 1}. ${chapter.name}`;
+
+                    return (
+                      <div key={chapter.id}>
+                        <div className="tree-row topic-row">
+                          <span className="topic-dot" />
+                          <span className="tree-label">{chapterLabel}</span>
+                          {chapter.syllabus_checked && (
+                            <Check size={13} className="done-check" />
+                          )}
+                          <button
+                            className="tree-add"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onAddTopic(subject.id, chapter.id);
+                            }}
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                        {chapterTopics.length > 0 && (
+                          <div className="deep-list">
+                            {chapterTopics.map((topic, topicIndex) => (
+                              <div
+                                key={topic.id}
+                                className={`tree-row deep ${selectedTopicId === topic.id ? "selected" : ""}`}
+                                onClick={() => {
+                                  onSelectTopic(topic.id);
+                                  onOpenSidebar();
+                                }}
+                              >
+                                <span className="topic-dot active" />
+                                <span className="tree-label">
+                                  {`${subjectNumber}.${chapterIndex + 1}.${topicIndex + 1}. ${topic.name}`}
+                                </span>
+                                {topic.syllabus_checked && (
+                                  <Check size={13} className="done-check" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
