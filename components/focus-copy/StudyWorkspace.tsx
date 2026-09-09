@@ -7,7 +7,9 @@ import { MapRoom } from "./MapRoom";
 import { Splitter } from "./Splitter";
 import { StealthDashboard } from "./StealthDashboard";
 import { useCurriculum } from "./useCurriculum";
+import { useMapPanel } from "./useMapPanel";
 import { useNote } from "./useNote";
+import { usePdfPanel } from "./usePdfPanel";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
@@ -144,11 +146,6 @@ export default function StudyWorkspace() {
     loadNoteForTopic,
   } = useNote(editor);
 
-  // PDF and Map panels are now independent. Each has its own open flag,
-  // so any combination (neither / one / both) can be visible at once.
-  const [isPdfOpen, setIsPdfOpen] = useState(false);
-  const [isMapOpen, setIsMapOpen] = useState(false);
-  const [pdfSplitWidth, setPdfSplitWidth] = useState(520);
   const [pdfZoom, setPdfZoom] = useState(1);
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfDocumentName, setPdfDocumentName] = useState(
@@ -165,18 +162,29 @@ export default function StudyWorkspace() {
   >([]);
   const [selectedPdfId, setSelectedPdfId] = useState<string | null>(null);
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
-  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
   const [mapUndoCount, setMapUndoCount] = useState(0);
   const editorLayoutRef = useRef<HTMLDivElement | null>(null);
-  const dragStateRef = useRef({ active: false, startX: 0, startWidth: 0 });
   const mapHistoryRef = useRef<string[]>([]);
   const [activeMap, setActiveMap] =
     useState<(typeof mapOptions)[number]["id"]>("india_political");
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pen");
   const [isDrawing, setIsDrawing] = useState(false);
-  const [mapWidth, setMapWidth] = useState(400);
-  const [isDraggingMap, setIsDraggingMap] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const { isMapOpen, setIsMapOpen, mapWidth, isDraggingMap, startMapDrag } =
+    useMapPanel(editorLayoutRef, false, 0);
+
+  const {
+    isPdfOpen,
+    setIsPdfOpen,
+    pdfSplitWidth,
+    setPdfSplitWidth,
+    isDraggingPdf,
+    closePdfPane,
+    resetPdfSplit,
+    startPdfDrag,
+    togglePdfPane,
+  } = usePdfPanel(editorLayoutRef, isMapOpen, mapWidth);
 
   const loadPdfDocuments = useCallback(async () => {
     try {
@@ -207,35 +215,6 @@ export default function StudyWorkspace() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const savedPdfOpen = window.localStorage.getItem("focus-copy-pdf-open");
-    const savedPdfWidth = window.localStorage.getItem("focus-copy-pdf-width");
-
-    if (savedPdfOpen) {
-      setIsPdfOpen(savedPdfOpen === "true");
-    }
-
-    if (savedPdfWidth) {
-      const parsed = Number(savedPdfWidth);
-      if (Number.isFinite(parsed) && parsed >= 400) {
-        setPdfSplitWidth(parsed);
-      }
-    }
-  }, []);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("focus-copy-pdf-open", String(isPdfOpen));
-    }
-  }, [isPdfOpen]);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        "focus-copy-pdf-width",
-        String(pdfSplitWidth),
-      );
-    }
-  }, [pdfSplitWidth]);
   const undoMapCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || mapHistoryRef.current.length === 0) return;
@@ -468,132 +447,7 @@ export default function StudyWorkspace() {
     context.stroke();
   };
 
-  // PDF panel renders purely off isPdfOpen; Map panel renders purely off
-  // isMapOpen. Neither depends on the other, so both can be open together.
   const isPdfSplitOpen = isPdfOpen;
-
-  const openPdfPane = useCallback(() => {
-    setIsPdfOpen(true);
-  }, []);
-
-  const closePdfPane = useCallback(() => {
-    setIsPdfOpen(false);
-  }, []);
-
-  const togglePdfPane = useCallback(() => {
-    setIsPdfOpen((value) => !value);
-  }, []);
-
-  const resetPdfSplit = useCallback(() => {
-    const containerWidth = editorLayoutRef.current?.clientWidth ?? 0;
-    const fallback = Math.max(
-      500,
-      Math.min(containerWidth / 2, containerWidth - 360),
-    );
-    setPdfSplitWidth(containerWidth ? fallback : 520);
-  }, []);
-
-  useEffect(() => {
-    if (!isDraggingPdf) return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const container = editorLayoutRef.current;
-      if (!container) return;
-
-      const totalWidth = container.clientWidth;
-      // Leave room for the map panel too, if it's also open, so the two
-      // side panels can't be resized to overlap the editor.
-      const reservedForMap = isMapOpen ? mapWidth : 0;
-      const delta = event.clientX - dragStateRef.current.startX;
-      const nextWidth = dragStateRef.current.startWidth + delta;
-      const minPdfWidth = 400;
-      const maxPdfWidth = totalWidth - reservedForMap - 360;
-
-      setPdfSplitWidth(Math.min(Math.max(nextWidth, minPdfWidth), maxPdfWidth));
-    };
-
-    const handlePointerUp = () => {
-      dragStateRef.current.active = false;
-      setIsDraggingPdf(false);
-      document.body.style.userSelect = "";
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    document.body.style.userSelect = "none";
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      document.body.style.userSelect = "";
-    };
-  }, [isDraggingPdf, isMapOpen, mapWidth]);
-
-  const startPdfDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!editorLayoutRef.current) return;
-    dragStateRef.current = {
-      active: true,
-      startX: event.clientX,
-      startWidth: pdfSplitWidth,
-    };
-    setIsDraggingPdf(true);
-    event.preventDefault();
-  };
-
-  const startMapDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!editorLayoutRef.current) return;
-    dragStateRef.current = {
-      active: true,
-      startX: event.clientX,
-      startWidth: mapWidth,
-    };
-    setIsDraggingMap(true);
-    event.preventDefault();
-  };
-
-  // Map resize handler. The map panel sits on the RIGHT edge of the layout
-  // and its splitter is on the panel's LEFT side, so the relationship
-  // between pointer movement and width is the mirror image of the PDF
-  // panel's (which sits on the left with its splitter on its right side).
-  // Dragging the splitter towards the map (to the right) should shrink it;
-  // dragging it away from the map (to the left, reclaiming editor space)
-  // should grow it. That means the delta needs to be inverted relative to
-  // the PDF drag calculation below.
-  useEffect(() => {
-    if (!isDraggingMap) return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const container = editorLayoutRef.current;
-      if (!container) return;
-
-      const totalWidth = container.clientWidth;
-      const reservedForPdf = isPdfOpen ? pdfSplitWidth : 0;
-      // Inverted relative to the PDF panel's calculation on purpose - see
-      // comment above the effect.
-      const delta = dragStateRef.current.startX - event.clientX;
-      const nextWidth = dragStateRef.current.startWidth + delta;
-      const minMapWidth = 300;
-      const maxMapWidth = totalWidth - reservedForPdf - 500;
-
-      setMapWidth(Math.min(Math.max(nextWidth, minMapWidth), maxMapWidth));
-    };
-
-    const handlePointerUp = () => {
-      dragStateRef.current.active = false;
-      setIsDraggingMap(false);
-      document.body.style.userSelect = "";
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    document.body.style.userSelect = "none";
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      document.body.style.userSelect = "";
-    };
-  }, [isDraggingMap, isPdfOpen, pdfSplitWidth]);
 
   if (showStealth)
     return <StealthDashboard onExit={() => setShowStealth(false)} />;
