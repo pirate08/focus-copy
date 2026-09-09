@@ -84,7 +84,6 @@ const mapOptions = [
   { id: "india_states", label: "State-wise", tone: "states" },
 ] as const;
 
-type SplitMode = "none" | "pdf" | "map";
 type DrawingTool = "pen" | "highlighter" | "pin" | "circle" | "arrow";
 
 function AppIcon({ name, size = 17 }: { name: string | null; size?: number }) {
@@ -97,15 +96,16 @@ export default function Home() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [selectedTopicId, setSelectedTopicId] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [splitMode, setSplitMode] = useState<SplitMode>("none");
+  // PDF and Map panels are now independent. Each has its own open flag,
+  // so any combination (neither / one / both) can be visible at once.
   const [isPdfOpen, setIsPdfOpen] = useState(false);
+  const [isMapOpen, setIsMapOpen] = useState(false);
   const [pdfSplitWidth, setPdfSplitWidth] = useState(520);
   const [pdfZoom, setPdfZoom] = useState(1);
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfDocumentName, setPdfDocumentName] = useState(
     "UPSC Geography Syllabus",
   );
-  const [showMapRoom, setShowMapRoom] = useState(false);
   const [showSyllabus, setShowSyllabus] = useState(false);
   const [showStealth, setShowStealth] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -128,6 +128,8 @@ export default function Home() {
     useState<(typeof mapOptions)[number]["id"]>("india_political");
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pen");
   const [isDrawing, setIsDrawing] = useState(false);
+  const [mapWidth, setMapWidth] = useState(400);
+  const [isDraggingMap, setIsDraggingMap] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const selectedTopic =
@@ -177,9 +179,7 @@ export default function Home() {
     const savedPdfWidth = window.localStorage.getItem("focus-copy-pdf-width");
 
     if (savedPdfOpen) {
-      const shouldOpen = savedPdfOpen === "true";
-      setIsPdfOpen(shouldOpen);
-      if (shouldOpen) setSplitMode("pdf");
+      setIsPdfOpen(savedPdfOpen === "true");
     }
 
     if (savedPdfWidth) {
@@ -229,19 +229,15 @@ export default function Home() {
 
       if (isPdfShortcut) {
         event.preventDefault();
-        if (isPdfOpen && splitMode === "pdf") {
-          setSplitMode("none");
-          setIsPdfOpen(false);
-        } else {
-          setSplitMode("pdf");
-          setIsPdfOpen(true);
-        }
+        // PDF panel visibility is controlled solely by isPdfOpen now, so the
+        // Map panel is unaffected by this shortcut.
+        setIsPdfOpen((value) => !value);
         return;
       }
 
       const isMapUndoShortcut =
         (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z";
-      if (isMapUndoShortcut && showMapRoom) {
+      if (isMapUndoShortcut && isMapOpen) {
         event.preventDefault();
         undoMapCanvas();
         return;
@@ -255,7 +251,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPdfOpen, showMapRoom, splitMode, undoMapCanvas]);
+  }, [isPdfOpen, isMapOpen, undoMapCanvas]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -312,7 +308,7 @@ export default function Home() {
       rect.width / 2,
       30,
     );
-  }, [activeMap, showMapRoom, splitMode]);
+  }, [activeMap, isMapOpen]);
 
   const filteredSubjects = useMemo(
     () =>
@@ -424,26 +420,21 @@ export default function Home() {
     context.stroke();
   };
 
-  const isPdfSplitOpen = splitMode === "pdf" && isPdfOpen;
-  const isMapOpen = splitMode === "map" || showMapRoom;
+  // PDF panel renders purely off isPdfOpen; Map panel renders purely off
+  // isMapOpen. Neither depends on the other, so both can be open together.
+  const isPdfSplitOpen = isPdfOpen;
 
   const openPdfPane = useCallback(() => {
     setIsPdfOpen(true);
-    setSplitMode("pdf");
   }, []);
 
   const closePdfPane = useCallback(() => {
     setIsPdfOpen(false);
-    setSplitMode("none");
   }, []);
 
   const togglePdfPane = useCallback(() => {
-    if (isPdfSplitOpen) {
-      closePdfPane();
-      return;
-    }
-    openPdfPane();
-  }, [closePdfPane, isPdfSplitOpen, openPdfPane]);
+    setIsPdfOpen((value) => !value);
+  }, []);
 
   const resetPdfSplit = useCallback(() => {
     const containerWidth = editorLayoutRef.current?.clientWidth ?? 0;
@@ -462,10 +453,13 @@ export default function Home() {
       if (!container) return;
 
       const totalWidth = container.clientWidth;
+      // Leave room for the map panel too, if it's also open, so the two
+      // side panels can't be resized to overlap the editor.
+      const reservedForMap = isMapOpen ? mapWidth : 0;
       const delta = event.clientX - dragStateRef.current.startX;
       const nextWidth = dragStateRef.current.startWidth + delta;
       const minPdfWidth = 400;
-      const maxPdfWidth = totalWidth - 360;
+      const maxPdfWidth = totalWidth - reservedForMap - 360;
 
       setPdfSplitWidth(Math.min(Math.max(nextWidth, minPdfWidth), maxPdfWidth));
     };
@@ -485,7 +479,7 @@ export default function Home() {
       window.removeEventListener("pointerup", handlePointerUp);
       document.body.style.userSelect = "";
     };
-  }, [isDraggingPdf]);
+  }, [isDraggingPdf, isMapOpen, mapWidth]);
 
   const startPdfDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!editorLayoutRef.current) return;
@@ -497,6 +491,61 @@ export default function Home() {
     setIsDraggingPdf(true);
     event.preventDefault();
   };
+
+  const startMapDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!editorLayoutRef.current) return;
+    dragStateRef.current = {
+      active: true,
+      startX: event.clientX,
+      startWidth: mapWidth,
+    };
+    setIsDraggingMap(true);
+    event.preventDefault();
+  };
+
+  // Map resize handler. The map panel sits on the RIGHT edge of the layout
+  // and its splitter is on the panel's LEFT side, so the relationship
+  // between pointer movement and width is the mirror image of the PDF
+  // panel's (which sits on the left with its splitter on its right side).
+  // Dragging the splitter towards the map (to the right) should shrink it;
+  // dragging it away from the map (to the left, reclaiming editor space)
+  // should grow it. That means the delta needs to be inverted relative to
+  // the PDF drag calculation below.
+  useEffect(() => {
+    if (!isDraggingMap) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const container = editorLayoutRef.current;
+      if (!container) return;
+
+      const totalWidth = container.clientWidth;
+      const reservedForPdf = isPdfOpen ? pdfSplitWidth : 0;
+      // Inverted relative to the PDF panel's calculation on purpose - see
+      // comment above the effect.
+      const delta = dragStateRef.current.startX - event.clientX;
+      const nextWidth = dragStateRef.current.startWidth + delta;
+      const minMapWidth = 300;
+      const maxMapWidth = totalWidth - reservedForPdf - 500;
+
+      setMapWidth(Math.min(Math.max(nextWidth, minMapWidth), maxMapWidth));
+    };
+
+    const handlePointerUp = () => {
+      dragStateRef.current.active = false;
+      setIsDraggingMap(false);
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    document.body.style.userSelect = "none";
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      document.body.style.userSelect = "";
+    };
+  }, [isDraggingMap, isPdfOpen, pdfSplitWidth]);
 
   if (showStealth)
     return <StealthDashboard onExit={() => setShowStealth(false)} />;
@@ -698,22 +747,7 @@ export default function Home() {
               </button>
               <button
                 className={`tool-button ${isMapOpen ? "active" : ""}`}
-                onClick={() => {
-                  if (isPdfOpen) {
-                    setShowMapRoom((value) => !value);
-                    setSplitMode("map");
-                    return;
-                  }
-
-                  if (splitMode === "map") {
-                    setSplitMode("none");
-                    setShowMapRoom(false);
-                    return;
-                  }
-
-                  setSplitMode("map");
-                  setShowMapRoom(true);
-                }}
+                onClick={() => setIsMapOpen((value) => !value)}
               >
                 <Map size={15} /> Map practice
               </button>
@@ -727,7 +761,7 @@ export default function Home() {
           </div>
           <section
             ref={editorLayoutRef}
-            className={`editor-layout ${splitMode !== "none" ? "split-active" : ""}`}
+            className={`editor-layout ${isPdfOpen || isMapOpen ? "split-active" : ""}`}
           >
             {isPdfSplitOpen && (
               <>
@@ -736,6 +770,7 @@ export default function Home() {
                   style={{
                     width: `${pdfSplitWidth}px`,
                     flexBasis: `${pdfSplitWidth}px`,
+                    flexShrink: 0,
                   }}
                 >
                   <div className="pdf-header">
@@ -878,7 +913,8 @@ export default function Home() {
                 />
               </>
             )}
-            <div className="editor-panel">
+
+            <div className="editor-panel" style={{ flex: 1, minWidth: 0 }}>
               <div className="note-header">
                 <div className="note-kicker">
                   <span className="status-dot" /> ACTIVE NOTE{" "}
@@ -1034,24 +1070,43 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            {!isPdfSplitOpen && splitMode !== "none" && splitMode === "map" && (
-              <aside className="reference-panel">
-                <MapRoom
-                  compact
-                  activeMap={activeMap}
-                  setActiveMap={setActiveMap}
-                  drawingTool={drawingTool}
-                  setDrawingTool={setDrawingTool}
-                  canvasRef={canvasRef}
-                  beginDrawing={beginDrawing}
-                  draw={draw}
-                  setIsDrawing={setIsDrawing}
-                  onClose={() => setSplitMode("none")}
-                  onSave={() => setSaveStatus("Map snapshot ready")}
-                  onUndo={undoMapCanvas}
-                  canUndo={mapUndoCount > 0}
+
+            {isMapOpen && (
+              <>
+                <div
+                  className={`splitter ${isDraggingMap ? "dragging" : ""}`}
+                  onPointerDown={startMapDrag}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize map panel"
+                  title="Drag to resize"
                 />
-              </aside>
+                <aside
+                  className="reference-panel map-panel"
+                  style={{
+                    width: `${mapWidth}px`,
+                    flexBasis: `${mapWidth}px`,
+                    flexShrink: 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  <MapRoom
+                    compact={false}
+                    activeMap={activeMap}
+                    setActiveMap={setActiveMap}
+                    drawingTool={drawingTool}
+                    setDrawingTool={setDrawingTool}
+                    canvasRef={canvasRef}
+                    beginDrawing={beginDrawing}
+                    draw={draw}
+                    setIsDrawing={setIsDrawing}
+                    onClose={() => setIsMapOpen(false)}
+                    onSave={() => setSaveStatus("Map snapshot ready")}
+                    onUndo={undoMapCanvas}
+                    canUndo={mapUndoCount > 0}
+                  />
+                </aside>
+              </>
             )}
           </section>
           <div className="bottom-insights">
@@ -1082,29 +1137,7 @@ export default function Home() {
           </div>
         </main>
       </div>
-      {showMapRoom && (
-        <div className="modal-backdrop">
-          <div className="map-modal">
-            <MapRoom
-              activeMap={activeMap}
-              setActiveMap={setActiveMap}
-              drawingTool={drawingTool}
-              setDrawingTool={setDrawingTool}
-              canvasRef={canvasRef}
-              beginDrawing={beginDrawing}
-              draw={draw}
-              setIsDrawing={setIsDrawing}
-              onClose={() => setShowMapRoom(false)}
-              onSave={() => {
-                setShowMapRoom(false);
-                setSaveStatus("Map snapshot ready");
-              }}
-              onUndo={undoMapCanvas}
-              canUndo={mapUndoCount > 0}
-            />
-          </div>
-        </div>
-      )}
+
       {showSyllabus && (
         <div className="modal-backdrop" onClick={() => setShowSyllabus(false)}>
           <div
@@ -1191,7 +1224,7 @@ function MapRoom({
   canUndo: boolean;
 }) {
   return (
-    <div className={`map-room ${compact ? "compact" : ""}`}>
+    <div className={`map-room panel-mode${compact ? " compact" : ""}`}>
       <div className="map-head">
         <div>
           <span className="eyebrow">PRACTICE ROOM</span>
