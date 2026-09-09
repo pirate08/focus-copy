@@ -97,6 +97,13 @@ export default function Home() {
   const [selectedTopicId, setSelectedTopicId] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [splitMode, setSplitMode] = useState<SplitMode>("none");
+  const [isPdfOpen, setIsPdfOpen] = useState(false);
+  const [pdfSplitWidth, setPdfSplitWidth] = useState(520);
+  const [pdfZoom, setPdfZoom] = useState(1);
+  const [pdfPage, setPdfPage] = useState(1);
+  const [pdfDocumentName, setPdfDocumentName] = useState(
+    "UPSC Geography Syllabus",
+  );
   const [showMapRoom, setShowMapRoom] = useState(false);
   const [showSyllabus, setShowSyllabus] = useState(false);
   const [showStealth, setShowStealth] = useState(false);
@@ -111,6 +118,9 @@ export default function Home() {
   const [noteTitle, setNoteTitle] = useState("Untitled note");
   const [saveStatus, setSaveStatus] = useState("Ready to save");
   const [pdfName, setPdfName] = useState<string | null>(null);
+  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+  const editorLayoutRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef({ active: false, startX: 0, startWidth: 0 });
   const [activeMap, setActiveMap] =
     useState<(typeof mapOptions)[number]["id"]>("india_political");
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pen");
@@ -159,7 +169,54 @@ export default function Home() {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedPdfOpen = window.localStorage.getItem("focus-copy-pdf-open");
+    const savedPdfWidth = window.localStorage.getItem("focus-copy-pdf-width");
+
+    if (savedPdfOpen) {
+      const shouldOpen = savedPdfOpen === "true";
+      setIsPdfOpen(shouldOpen);
+      if (shouldOpen) setSplitMode("pdf");
+    }
+
+    if (savedPdfWidth) {
+      const parsed = Number(savedPdfWidth);
+      if (Number.isFinite(parsed) && parsed >= 400) {
+        setPdfSplitWidth(parsed);
+      }
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("focus-copy-pdf-open", String(isPdfOpen));
+    }
+  }, [isPdfOpen]);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "focus-copy-pdf-width",
+        String(pdfSplitWidth),
+      );
+    }
+  }, [pdfSplitWidth]);
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const isPdfShortcut =
+        (event.altKey && event.key.toLowerCase() === "p") ||
+        (event.ctrlKey && (event.key === "\\" || event.key === "|"));
+
+      if (isPdfShortcut) {
+        event.preventDefault();
+        if (isPdfOpen && splitMode === "pdf") {
+          setSplitMode("none");
+          setIsPdfOpen(false);
+        } else {
+          setSplitMode("pdf");
+          setIsPdfOpen(true);
+        }
+        return;
+      }
+
       if (
         event.key === "Escape" ||
         (event.altKey && event.key.toLowerCase() === "k")
@@ -168,7 +225,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [isPdfOpen, splitMode]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -329,6 +386,79 @@ export default function Home() {
     context.stroke();
   };
 
+  const isPdfSplitOpen = splitMode === "pdf" && isPdfOpen;
+
+  const openPdfPane = useCallback(() => {
+    setIsPdfOpen(true);
+    setSplitMode("pdf");
+  }, []);
+
+  const closePdfPane = useCallback(() => {
+    setIsPdfOpen(false);
+    setSplitMode("none");
+  }, []);
+
+  const togglePdfPane = useCallback(() => {
+    if (isPdfSplitOpen) {
+      closePdfPane();
+      return;
+    }
+    openPdfPane();
+  }, [closePdfPane, isPdfSplitOpen, openPdfPane]);
+
+  const resetPdfSplit = useCallback(() => {
+    const containerWidth = editorLayoutRef.current?.clientWidth ?? 0;
+    const fallback = Math.max(
+      500,
+      Math.min(containerWidth / 2, containerWidth - 360),
+    );
+    setPdfSplitWidth(containerWidth ? fallback : 520);
+  }, []);
+
+  useEffect(() => {
+    if (!isDraggingPdf) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const container = editorLayoutRef.current;
+      if (!container) return;
+
+      const totalWidth = container.clientWidth;
+      const delta = event.clientX - dragStateRef.current.startX;
+      const nextWidth = dragStateRef.current.startWidth + delta;
+      const minPdfWidth = 400;
+      const maxPdfWidth = totalWidth - 360;
+
+      setPdfSplitWidth(Math.min(Math.max(nextWidth, minPdfWidth), maxPdfWidth));
+    };
+
+    const handlePointerUp = () => {
+      dragStateRef.current.active = false;
+      setIsDraggingPdf(false);
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    document.body.style.userSelect = "none";
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      document.body.style.userSelect = "";
+    };
+  }, [isDraggingPdf]);
+
+  const startPdfDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!editorLayoutRef.current) return;
+    dragStateRef.current = {
+      active: true,
+      startX: event.clientX,
+      startWidth: pdfSplitWidth,
+    };
+    setIsDraggingPdf(true);
+    event.preventDefault();
+  };
+
   if (showStealth)
     return <StealthDashboard onExit={() => setShowStealth(false)} />;
 
@@ -379,7 +509,9 @@ export default function Home() {
         </div>
       </header>
       <div className="workspace">
-        <aside className={`sidebar ${showMobileSidebar ? "sidebar-open" : ""}`}>
+        <aside
+          className={`sidebar ${showMobileSidebar ? "sidebar-open" : ""} ${isPdfSplitOpen ? "sidebar-hidden" : ""}`}
+        >
           <div className="sidebar-heading">
             <div>
               <span className="eyebrow">YOUR CURRICULUM</span>
@@ -520,10 +652,8 @@ export default function Home() {
                 <ListChecks size={15} /> Syllabus
               </button>
               <button
-                className={`tool-button ${splitMode === "pdf" ? "active" : ""}`}
-                onClick={() =>
-                  setSplitMode(splitMode === "pdf" ? "none" : "pdf")
-                }
+                className={`tool-button ${isPdfOpen ? "active" : ""}`}
+                onClick={togglePdfPane}
               >
                 <FileText size={15} /> Reference PDF
               </button>
@@ -544,8 +674,158 @@ export default function Home() {
             </div>
           </div>
           <section
+            ref={editorLayoutRef}
             className={`editor-layout ${splitMode !== "none" ? "split-active" : ""}`}
           >
+            {isPdfSplitOpen && (
+              <>
+                <aside
+                  className="pdf-panel"
+                  style={{
+                    width: `${pdfSplitWidth}px`,
+                    flexBasis: `${pdfSplitWidth}px`,
+                  }}
+                >
+                  <div className="pdf-header">
+                    <div className="pdf-header-left">
+                      <span className="eyebrow">REFERENCE MATERIAL</span>
+                      <select
+                        className="pdf-doc-select"
+                        value={pdfDocumentName}
+                        onChange={(event) =>
+                          setPdfDocumentName(event.target.value)
+                        }
+                      >
+                        <option value="UPSC Geography Syllabus">
+                          UPSC Geography Syllabus
+                        </option>
+                        <option value="Polity Concept Notes">
+                          Polity Concept Notes
+                        </option>
+                        <option value="Civics Revision Pack">
+                          Civics Revision Pack
+                        </option>
+                      </select>
+                    </div>
+                    <div className="pdf-header-actions">
+                      <button
+                        className="icon-button small"
+                        onClick={() =>
+                          setPdfZoom((value) =>
+                            Number(
+                              Math.max(
+                                0.7,
+                                Number((value - 0.15).toFixed(2)),
+                              ).toFixed(2),
+                            ),
+                          )
+                        }
+                        aria-label="Zoom out"
+                      >
+                        −
+                      </button>
+                      <button
+                        className="icon-button small"
+                        onClick={() =>
+                          setPdfZoom((value) =>
+                            Number(
+                              Math.min(
+                                2.2,
+                                Number((value + 0.15).toFixed(2)),
+                              ).toFixed(2),
+                            ),
+                          )
+                        }
+                        aria-label="Zoom in"
+                      >
+                        +
+                      </button>
+                      <button
+                        className="icon-button small"
+                        onClick={() => setPdfZoom(1)}
+                        aria-label="Reset zoom"
+                      >
+                        100%
+                      </button>
+                    </div>
+                  </div>
+                  <div className="pdf-header-toolbar">
+                    <button
+                      className="pdf-nav-button"
+                      onClick={() =>
+                        setPdfPage((value) => Math.max(1, value - 1))
+                      }
+                    >
+                      Prev
+                    </button>
+                    <span>Page {pdfPage}</span>
+                    <button
+                      className="pdf-nav-button"
+                      onClick={() => setPdfPage((value) => value + 1)}
+                    >
+                      Next
+                    </button>
+                    <button
+                      className="icon-button small pdf-close"
+                      onClick={closePdfPane}
+                      aria-label="Close PDF pane"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                  <div className="pdf-upload">
+                    <label className="upload-card compact">
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(event) =>
+                          setPdfName(event.target.files?.[0]?.name ?? null)
+                        }
+                      />
+                      <Upload size={22} />
+                      <strong>{pdfName ?? "Add a PDF reference"}</strong>
+                      <span>
+                        {pdfName ? "Ready to compare" : "PDF files up to 20 MB"}
+                      </span>
+                    </label>
+                  </div>
+                  <div className="pdf-viewer">
+                    <div
+                      className="pdf-viewer-scroll"
+                      style={{ zoom: pdfZoom }}
+                    >
+                      <div className="pdf-page-frame">
+                        <div className="pdf-page-content">
+                          <span className="eyebrow">REFERENCE PAGE</span>
+                          <h3>{pdfDocumentName}</h3>
+                          <p>{pdfName ?? "No document selected"}</p>
+                          <div className="pdf-page-metadata">
+                            <span>Page {pdfPage}</span>
+                            <span>{Math.round(pdfZoom * 100)}%</span>
+                          </div>
+                          <div className="pdf-sample-lines">
+                            <span>Topic summary</span>
+                            <span>Key facts</span>
+                            <span>Definition</span>
+                            <span>Examples</span>
+                            <span>Exam angle</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </aside>
+                <div
+                  className={`splitter ${isDraggingPdf ? "dragging" : ""}`}
+                  onPointerDown={startPdfDrag}
+                  onDoubleClick={resetPdfSplit}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize PDF panel"
+                  title="Drag to resize"
+                />
+              </>
+            )}
             <div className="editor-panel">
               <div className="note-header">
                 <div className="note-kicker">
@@ -702,62 +982,21 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            {splitMode !== "none" && (
+            {!isPdfSplitOpen && splitMode !== "none" && splitMode === "map" && (
               <aside className="reference-panel">
-                {splitMode === "pdf" ? (
-                  <>
-                    <div className="reference-head">
-                      <div>
-                        <span className="eyebrow">REFERENCE MATERIAL</span>
-                        <h3>PDF reader</h3>
-                      </div>
-                      <button
-                        className="icon-button small"
-                        onClick={() => setSplitMode("none")}
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                    <label className="upload-card">
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        onChange={(event) =>
-                          setPdfName(event.target.files?.[0]?.name ?? null)
-                        }
-                      />
-                      <Upload size={24} />
-                      <strong>{pdfName ?? "Drop a syllabus PDF here"}</strong>
-                      <span>
-                        {pdfName
-                          ? "Ready to reference alongside your notes"
-                          : "PDF files up to 20 MB"}
-                      </span>
-                    </label>
-                    <div className="pdf-placeholder">
-                      <FileText size={30} />
-                      <strong>{pdfName ?? "No reference loaded"}</strong>
-                      <span>
-                        Upload a PDF to keep your reading and revision in one
-                        calm workspace.
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <MapRoom
-                    compact
-                    activeMap={activeMap}
-                    setActiveMap={setActiveMap}
-                    drawingTool={drawingTool}
-                    setDrawingTool={setDrawingTool}
-                    canvasRef={canvasRef}
-                    beginDrawing={beginDrawing}
-                    draw={draw}
-                    setIsDrawing={setIsDrawing}
-                    onClose={() => setSplitMode("none")}
-                    onSave={() => setSaveStatus("Map snapshot ready")}
-                  />
-                )}
+                <MapRoom
+                  compact
+                  activeMap={activeMap}
+                  setActiveMap={setActiveMap}
+                  drawingTool={drawingTool}
+                  setDrawingTool={setDrawingTool}
+                  canvasRef={canvasRef}
+                  beginDrawing={beginDrawing}
+                  draw={draw}
+                  setIsDrawing={setIsDrawing}
+                  onClose={() => setSplitMode("none")}
+                  onSave={() => setSaveStatus("Map snapshot ready")}
+                />
               </aside>
             )}
           </section>
