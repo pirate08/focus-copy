@@ -119,6 +119,11 @@ export default function Home() {
   const [noteTitle, setNoteTitle] = useState("Untitled note");
   const [saveStatus, setSaveStatus] = useState("Ready to save");
   const [pdfName, setPdfName] = useState<string | null>(null);
+  const [pdfDocuments, setPdfDocuments] = useState<
+    Array<{ id: string; name: string; uploadedAt?: string | null }>
+  >([]);
+  const [selectedPdfId, setSelectedPdfId] = useState<string | null>(null);
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
   const [isDraggingPdf, setIsDraggingPdf] = useState(false);
   const [mapUndoCount, setMapUndoCount] = useState(0);
   const editorLayoutRef = useRef<HTMLDivElement | null>(null);
@@ -171,14 +176,83 @@ export default function Home() {
         setSelectedTopicId((topicData as Topic[])[0].id);
       }
     } catch (err) {
-      // ignore for now
       console.error(err);
     }
   }, []);
 
+  const loadPdfDocuments = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pdfs");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+      setPdfDocuments(
+        data as Array<{ id: string; name: string; uploadedAt?: string | null }>,
+      );
+      if (data.length && !selectedPdfId) {
+        setSelectedPdfId(data[0].id);
+        setPdfDocumentName(data[0].name || "Reference PDF");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [selectedPdfId]);
+
+  const loadNoteForTopic = useCallback(
+    async (topicId: string) => {
+      try {
+        const res = await fetch(
+          `/api/notes?topicId=${encodeURIComponent(topicId)}`,
+        );
+        if (!res.ok) {
+          setNoteId(null);
+          setNoteTitle("Untitled note");
+          setTags([]);
+          setPaperStyle("lined");
+          editor?.commands.setContent({ type: "doc", content: [] });
+          return;
+        }
+
+        const data = await res.json();
+        const note = Array.isArray(data) && data.length ? data[0] : null;
+
+        if (!note) {
+          setNoteId(null);
+          setNoteTitle("Untitled note");
+          setTags([]);
+          setPaperStyle("lined");
+          editor?.commands.setContent({ type: "doc", content: [] });
+          return;
+        }
+
+        setNoteId(note.id ?? note._id ?? null);
+        setNoteTitle(note.title ?? "Untitled note");
+        setTags(Array.isArray(note.tags) ? (note.tags as StudyTag[]) : []);
+        setPaperStyle(
+          (note.paperStyle ?? note.paper_style ?? "lined") as
+            | "lined"
+            | "grid"
+            | "blank",
+        );
+        editor?.commands.setContent(
+          note.content ?? { type: "doc", content: [] },
+        );
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    [editor],
+  );
+
   useEffect(() => {
     void loadData();
-  }, [loadData]);
+    void loadPdfDocuments();
+  }, [loadData, loadPdfDocuments]);
+
+  useEffect(() => {
+    if (!editor || !selectedTopicId) return;
+    void loadNoteForTopic(selectedTopicId);
+  }, [editor, loadNoteForTopic, selectedTopicId]);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
@@ -337,12 +411,11 @@ export default function Home() {
     if (!selectedTopic || !editor) return;
     setSaveStatus("Saving…");
     const payload = {
-      topic_id: selectedTopic.id,
+      topicId: selectedTopic.id,
       title: noteTitle,
       content: editor.getJSON(),
       tags,
-      paper_style: paperStyle,
-      updated_at: new Date().toISOString(),
+      paperStyle,
     };
     try {
       const res = await fetch("/api/notes", {
@@ -393,6 +466,7 @@ export default function Home() {
       if (!res.ok) return;
       const newTopic = await res.json();
       setTopics((items) => [...items, newTopic as Topic]);
+      setSelectedTopicId((newTopic as Topic).id);
     } catch (err) {
       console.error(err);
     }
@@ -801,20 +875,27 @@ export default function Home() {
                       <span className="eyebrow">REFERENCE MATERIAL</span>
                       <select
                         className="pdf-doc-select"
-                        value={pdfDocumentName}
-                        onChange={(event) =>
-                          setPdfDocumentName(event.target.value)
-                        }
+                        value={selectedPdfId ?? pdfDocumentName}
+                        onChange={(event) => {
+                          const nextId = event.target.value;
+                          const nextDocument = pdfDocuments.find(
+                            (document) => document.id === nextId,
+                          );
+                          setSelectedPdfId(nextId || null);
+                          setPdfDocumentName(
+                            nextDocument?.name ?? "Reference PDF",
+                          );
+                        }}
                       >
-                        <option value="UPSC Geography Syllabus">
-                          UPSC Geography Syllabus
-                        </option>
-                        <option value="Polity Concept Notes">
-                          Polity Concept Notes
-                        </option>
-                        <option value="Civics Revision Pack">
-                          Civics Revision Pack
-                        </option>
+                        {pdfDocuments.length > 0 ? (
+                          pdfDocuments.map((document) => (
+                            <option key={document.id} value={document.id}>
+                              {document.name}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="">No PDFs uploaded yet</option>
+                        )}
                       </select>
                     </div>
                     <div className="pdf-header-actions">
@@ -888,9 +969,36 @@ export default function Home() {
                       <input
                         type="file"
                         accept="application/pdf"
-                        onChange={(event) =>
-                          setPdfName(event.target.files?.[0]?.name ?? null)
-                        }
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+
+                          const formData = new FormData();
+                          formData.append("file", file);
+                          setPdfName(file.name);
+                          setPdfUploadError(null);
+
+                          try {
+                            const res = await fetch("/api/pdfs", {
+                              method: "POST",
+                              body: formData,
+                            });
+                            const data = await res.json();
+                            if (!res.ok) {
+                              setPdfUploadError(data?.error ?? "Upload failed");
+                              return;
+                            }
+                            await loadPdfDocuments();
+                            setSelectedPdfId(data.id);
+                            setPdfDocumentName(data.name || file.name);
+                            setPdfPage(1);
+                          } catch (err) {
+                            console.error(err);
+                            setPdfUploadError(
+                              "Upload failed. Please try again.",
+                            );
+                          }
+                        }}
                       />
                       <Upload size={22} />
                       <strong>{pdfName ?? "Add a PDF reference"}</strong>
@@ -898,31 +1006,43 @@ export default function Home() {
                         {pdfName ? "Ready to compare" : "PDF files up to 20 MB"}
                       </span>
                     </label>
+                    {pdfUploadError && (
+                      <small className="error-text">{pdfUploadError}</small>
+                    )}
                   </div>
                   <div className="pdf-viewer">
-                    <div
-                      className="pdf-viewer-scroll"
-                      style={{ zoom: pdfZoom }}
-                    >
-                      <div className="pdf-page-frame">
-                        <div className="pdf-page-content">
-                          <span className="eyebrow">REFERENCE PAGE</span>
-                          <h3>{pdfDocumentName}</h3>
-                          <p>{pdfName ?? "No document selected"}</p>
-                          <div className="pdf-page-metadata">
-                            <span>Page {pdfPage}</span>
-                            <span>{Math.round(pdfZoom * 100)}%</span>
-                          </div>
-                          <div className="pdf-sample-lines">
-                            <span>Topic summary</span>
-                            <span>Key facts</span>
-                            <span>Definition</span>
-                            <span>Examples</span>
-                            <span>Exam angle</span>
+                    {selectedPdfId ? (
+                      <iframe
+                        src={`/api/pdfs/${selectedPdfId}`}
+                        title={pdfDocumentName}
+                        className="pdf-frame"
+                        style={{ width: "100%", height: "100%", border: "0" }}
+                      />
+                    ) : (
+                      <div
+                        className="pdf-viewer-scroll"
+                        style={{ zoom: pdfZoom }}
+                      >
+                        <div className="pdf-page-frame">
+                          <div className="pdf-page-content">
+                            <span className="eyebrow">REFERENCE PAGE</span>
+                            <h3>{pdfDocumentName}</h3>
+                            <p>{pdfName ?? "No document selected"}</p>
+                            <div className="pdf-page-metadata">
+                              <span>Page {pdfPage}</span>
+                              <span>{Math.round(pdfZoom * 100)}%</span>
+                            </div>
+                            <div className="pdf-sample-lines">
+                              <span>Topic summary</span>
+                              <span>Key facts</span>
+                              <span>Definition</span>
+                              <span>Examples</span>
+                              <span>Exam angle</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </aside>
                 <div
