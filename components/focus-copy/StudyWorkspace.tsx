@@ -27,57 +27,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 
-import type { Note, Subject, StudyTag, Topic } from "@/lib/types";
-import { studyTags } from "@/lib/types";
-import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
-  ArrowDown,
-  ArrowUp,
-  BookOpen,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Circle,
-  Cloud,
-  FileText,
-  FolderPlus,
-  Globe2,
-  Grid3X3,
-  Highlighter,
-  Keyboard,
-  Landmark,
-  Leaf,
-  List,
-  ListChecks,
-  ListTree,
-  LoaderCircle,
-  Map,
-  MapPin,
-  Menu,
-  Moon,
-  MoreHorizontal,
-  Mountain,
-  NotebookPen,
-  Pen,
-  Plus,
-  RotateCcw,
-  Save,
-  Scale,
-  Search,
-  Settings2,
-  ShieldCheck,
-  Sparkles,
-  Square,
-  Sun,
-  Table2,
-  Tags,
-  Type,
-  Upload,
-  X,
-  Zap,
-} from "lucide-react";
+import type { Topic } from "@/lib/types";
 
 const mapOptions = [
   { id: "india_political", label: "India Political", tone: "india" },
