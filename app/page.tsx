@@ -13,7 +13,7 @@ import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
-import { supabase } from "@/lib/supabase";
+
 import type { Note, Subject, StudyTag, Topic } from "@/lib/types";
 import { studyTags } from "@/lib/types";
 import {
@@ -156,14 +156,23 @@ export default function Home() {
   });
 
   const loadData = useCallback(async () => {
-    const [{ data: subjectData }, { data: topicData }] = await Promise.all([
-      supabase.from("subjects").select("*").order("sort_order"),
-      supabase.from("topics").select("*").order("sort_order"),
-    ]);
-    if (subjectData?.length) setSubjects(subjectData as Subject[]);
-    if (topicData?.length) {
-      setTopics(topicData as Topic[]);
-      setSelectedTopicId((topicData as Topic[])[0].id);
+    try {
+      const [subjectsRes, topicsRes] = await Promise.all([
+        fetch("/api/subjects"),
+        fetch("/api/topics"),
+      ]);
+      if (!subjectsRes.ok || !topicsRes.ok) return;
+      const subjectData = await subjectsRes.json();
+      const topicData = await topicsRes.json();
+      if (Array.isArray(subjectData) && subjectData.length)
+        setSubjects(subjectData as Subject[]);
+      if (Array.isArray(topicData) && topicData.length) {
+        setTopics(topicData as Topic[]);
+        setSelectedTopicId((topicData as Topic[])[0].id);
+      }
+    } catch (err) {
+      // ignore for now
+      console.error(err);
     }
   }, []);
 
@@ -335,20 +344,23 @@ export default function Home() {
       paper_style: paperStyle,
       updated_at: new Date().toISOString(),
     };
-    const result = noteId
-      ? await supabase
-          .from("notes")
-          .update(payload)
-          .eq("id", noteId)
-          .select()
-          .maybeSingle()
-      : await supabase.from("notes").insert(payload).select().maybeSingle();
-    if (result.error) {
+    try {
+      const res = await fetch("/api/notes", {
+        method: noteId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: noteId, ...payload }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSaveStatus("Saved in this session");
+        return;
+      }
+      setNoteId((data as any)?.id ?? noteId);
+      setSaveStatus("Saved just now");
+    } catch (err) {
+      console.error(err);
       setSaveStatus("Saved in this session");
-      return;
     }
-    setNoteId((result.data as Note | null)?.id ?? noteId);
-    setSaveStatus("Saved just now");
   };
 
   const toggleSyllabus = async (topic: Topic) => {
@@ -358,21 +370,32 @@ export default function Home() {
         item.id === topic.id ? { ...item, syllabus_checked: nextValue } : item,
       ),
     );
-    await supabase
-      .from("topics")
-      .update({ syllabus_checked: nextValue })
-      .eq("id", topic.id);
+    try {
+      await fetch("/api/topics", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: topic.id, syllabusChecked: nextValue }),
+      });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const addTopic = async (subjectId: string) => {
     const name = window.prompt("Name this new chapter");
     if (!name?.trim()) return;
-    const { data } = await supabase
-      .from("topics")
-      .insert({ subject_id: subjectId, name: name.trim(), sort_order: 99 })
-      .select()
-      .maybeSingle();
-    if (data) setTopics((items) => [...items, data as Topic]);
+    try {
+      const res = await fetch("/api/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectId, name: name.trim(), sortOrder: 99 }),
+      });
+      if (!res.ok) return;
+      const newTopic = await res.json();
+      setTopics((items) => [...items, newTopic as Topic]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const beginDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
