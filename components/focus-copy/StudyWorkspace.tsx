@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { MapRoom } from "./MapRoom";
+import { Splitter } from "./Splitter";
 import { StealthDashboard } from "./StealthDashboard";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
@@ -1047,14 +1048,11 @@ export default function StudyWorkspace() {
                     )}
                   </div>
                 </aside>
-                <div
-                  className={`splitter ${isDraggingPdf ? "dragging" : ""}`}
+                <Splitter
                   onPointerDown={startPdfDrag}
                   onDoubleClick={resetPdfSplit}
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="Resize PDF panel"
-                  title="Drag to resize"
+                  isDragging={isDraggingPdf}
+                  label="Resize PDF panel"
                 />
               </>
             )}
@@ -1218,13 +1216,10 @@ export default function StudyWorkspace() {
 
             {isMapOpen && (
               <>
-                <div
-                  className={`splitter ${isDraggingMap ? "dragging" : ""}`}
+                <Splitter
                   onPointerDown={startMapDrag}
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="Resize map panel"
-                  title="Drag to resize"
+                  isDragging={isDraggingMap}
+                  label="Resize map panel"
                 />
                 <aside
                   className="reference-panel map-panel"
