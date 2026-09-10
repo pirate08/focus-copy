@@ -118,7 +118,13 @@ export function WorkspaceSidebar({
 
                     return (
                       <div key={chapter.id}>
-                        <div className="tree-row topic-row">
+                        <div
+                          className={`tree-row topic-row ${selectedTopicId === chapter.id ? "selected" : ""}`}
+                          onClick={() => {
+                            onSelectTopic(chapter.id);
+                            onOpenSidebar();
+                          }}
+                        >
                           <span className="topic-dot" />
                           <span className="tree-label">{chapterLabel}</span>
                           {chapter.syllabus_checked && (

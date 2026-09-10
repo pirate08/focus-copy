@@ -54,7 +54,7 @@ export function MapRoom({
       <div className="map-head">
         <div>
           <span className="eyebrow">PRACTICE ROOM</span>
-          <h2>Blank maps</h2>
+          <h2>Map practice</h2>
         </div>
         <div className="map-head-actions">
           <button className="secondary-button" onClick={onSave}>
@@ -66,16 +66,30 @@ export function MapRoom({
         </div>
       </div>
       <div className="map-tabs">
-        {mapOptions.map((map) => (
-          <button
-            className={activeMap === map.id ? "active" : ""}
-            onClick={() => setActiveMap(map.id)}
-            key={map.id}
-          >
-            <Map size={14} />
-            {map.label}
-          </button>
-        ))}
+        <button
+          className={activeMap === "india_political" ? "active" : ""}
+          onClick={() => setActiveMap("india_political")}
+        >
+          India Blank
+        </button>
+        <button
+          className={activeMap === "india_physical" ? "active" : ""}
+          onClick={() => setActiveMap("india_physical")}
+        >
+          India Reference
+        </button>
+        <button
+          className={activeMap === "india_states" ? "active" : ""}
+          onClick={() => setActiveMap("india_states")}
+        >
+          India State Outlines
+        </button>
+        <button
+          className={activeMap === "world" ? "active" : ""}
+          onClick={() => setActiveMap("world")}
+        >
+          World Map
+        </button>
       </div>
       <div className="map-body">
         <div className="map-toolbar">
@@ -106,14 +120,135 @@ export function MapRoom({
             <MoreHorizontal size={17} />
           </button>
         </div>
-        <canvas
-          ref={canvasRef}
-          className="map-canvas"
-          onPointerDown={beginDrawing}
-          onPointerMove={draw}
-          onPointerUp={() => setIsDrawing(false)}
-          onPointerLeave={() => setIsDrawing(false)}
-        />
+        <div
+          className="map-canvas-wrap"
+          style={{ position: "relative", width: "100%", height: 480 }}
+        >
+          {/* Map layer */}
+          <div
+            className="map-layer"
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "linear-gradient(180deg,#f6fbf9,#eef6f0)",
+            }}
+          >
+            {activeMap === "india_political" && (
+              <svg
+                viewBox="0 0 800 600"
+                style={{ maxWidth: "98%", height: "100%" }}
+              >
+                <rect width="100%" height="100%" fill="#fff" rx="6" />
+                <g fill="none" stroke="#bcd9c4" strokeWidth="1">
+                  {/* simple grid + placeholder outline */}
+                  <rect
+                    x="40"
+                    y="40"
+                    width="720"
+                    height="520"
+                    stroke="#d6e8dd"
+                  />
+                </g>
+                <text
+                  x="400"
+                  y="40"
+                  textAnchor="middle"
+                  fontSize="18"
+                  fill="#547365"
+                >
+                  India — Political (Outline)
+                </text>
+              </svg>
+            )}
+            {activeMap === "india_physical" && (
+              <svg
+                viewBox="0 0 800 600"
+                style={{ maxWidth: "98%", height: "100%" }}
+              >
+                <rect width="100%" height="100%" fill="#fff" rx="6" />
+                <defs>
+                  <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#dfeedd" />
+                    <stop offset="100%" stopColor="#b1d6b0" />
+                  </linearGradient>
+                </defs>
+                <rect
+                  x="40"
+                  y="40"
+                  width="720"
+                  height="520"
+                  fill="url(#g)"
+                  stroke="#c7e0c1"
+                />
+                <text
+                  x="400"
+                  y="40"
+                  textAnchor="middle"
+                  fontSize="18"
+                  fill="#38604d"
+                >
+                  India — Physical (Reference)
+                </text>
+              </svg>
+            )}
+            {activeMap === "india_states" && (
+              <svg
+                viewBox="0 0 800 600"
+                style={{ maxWidth: "98%", height: "100%" }}
+              >
+                <rect width="100%" height="100%" fill="#fff" rx="6" />
+                <g fill="none" stroke="#9eb4a6" strokeWidth="1">
+                  <rect x="40" y="40" width="720" height="520" />
+                </g>
+                <text
+                  x="400"
+                  y="40"
+                  textAnchor="middle"
+                  fontSize="18"
+                  fill="#547365"
+                >
+                  India — States (Outline)
+                </text>
+              </svg>
+            )}
+            {activeMap === "world" && (
+              <svg
+                viewBox="0 0 1000 600"
+                style={{ maxWidth: "98%", height: "100%" }}
+              >
+                <rect width="100%" height="100%" fill="#fff" rx="6" />
+                <text
+                  x="500"
+                  y="40"
+                  textAnchor="middle"
+                  fontSize="18"
+                  fill="#335"
+                >
+                  World Map (Reference)
+                </text>
+              </svg>
+            )}
+          </div>
+
+          {/* Canvas overlay for annotations */}
+          <canvas
+            ref={canvasRef}
+            className="map-canvas"
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+            }}
+            onPointerDown={beginDrawing}
+            onPointerMove={draw}
+            onPointerUp={() => setIsDrawing(false)}
+            onPointerLeave={() => setIsDrawing(false)}
+          />
+        </div>
       </div>
       <div className="map-footer">
         <span>

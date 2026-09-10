@@ -55,8 +55,8 @@ export function PdfPanel({
           flexShrink: 0,
         }}
       >
-        <div className="pdf-header">
-          <div className="pdf-header-left">
+        <div className="pdf-toolbar single">
+          <div className="pdf-toolbar-left">
             <span className="eyebrow">REFERENCE MATERIAL</span>
             <select
               className="pdf-doc-select"
@@ -74,45 +74,48 @@ export function PdfPanel({
               )}
             </select>
           </div>
-          <div className="pdf-header-actions">
-            <button
-              className="icon-button small"
-              onClick={onZoomOut}
-              aria-label="Zoom out"
-            >
-              −
+          <div className="pdf-toolbar-center">
+            <button className="icon-button small" onClick={onPrevPage}>
+              ◀
             </button>
-            <button
-              className="icon-button small"
-              onClick={onZoomIn}
-              aria-label="Zoom in"
-            >
-              +
+            <div className="pdf-page-indicator">Page {pdfPage}</div>
+            <button className="icon-button small" onClick={onNextPage}>
+              ▶
             </button>
+            <div className="pdf-zoom">
+              <button
+                className="icon-button small"
+                onClick={onZoomOut}
+                aria-label="Zoom out"
+              >
+                −
+              </button>
+              <div className="pdf-zoom-label">{Math.round(pdfZoom * 100)}%</div>
+              <button
+                className="icon-button small"
+                onClick={onZoomIn}
+                aria-label="Zoom in"
+              >
+                +
+              </button>
+              <button
+                className="icon-button small"
+                onClick={onResetZoom}
+                aria-label="Reset zoom"
+              >
+                Fit
+              </button>
+            </div>
+          </div>
+          <div className="pdf-toolbar-right">
             <button
-              className="icon-button small"
-              onClick={onResetZoom}
-              aria-label="Reset zoom"
+              className="icon-button small pdf-close"
+              onClick={onClose}
+              aria-label="Close PDF pane"
             >
-              100%
+              <X size={15} />
             </button>
           </div>
-        </div>
-        <div className="pdf-header-toolbar">
-          <button className="pdf-nav-button" onClick={onPrevPage}>
-            Prev
-          </button>
-          <span>Page {pdfPage}</span>
-          <button className="pdf-nav-button" onClick={onNextPage}>
-            Next
-          </button>
-          <button
-            className="icon-button small pdf-close"
-            onClick={onClose}
-            aria-label="Close PDF pane"
-          >
-            <X size={15} />
-          </button>
         </div>
         <div className="pdf-upload">
           <label className="upload-card compact">
@@ -135,8 +138,15 @@ export function PdfPanel({
             <small className="error-text">{pdfUploadError}</small>
           )}
         </div>
-        <div className="pdf-viewer">
-          {selectedPdfId ? (
+        <div className="pdf-viewer" style={{ position: "relative" }}>
+          {pdfName && !selectedPdfId ? (
+            <div className="pdf-skeleton" style={{ padding: 24 }}>
+              <div className="skeleton-header" />
+              <div className="skeleton-line" />
+              <div className="skeleton-line short" />
+              <div className="skeleton-page" />
+            </div>
+          ) : selectedPdfId ? (
             <iframe
               src={`/api/pdfs/${selectedPdfId}`}
               title={pdfDocumentName}
@@ -144,24 +154,13 @@ export function PdfPanel({
               style={{ width: "100%", height: "100%", border: "0" }}
             />
           ) : (
-            <div className="pdf-viewer-scroll" style={{ zoom: pdfZoom }}>
-              <div className="pdf-page-frame">
-                <div className="pdf-page-content">
-                  <span className="eyebrow">REFERENCE PAGE</span>
-                  <h3>{pdfDocumentName}</h3>
-                  <p>{pdfName ?? "No document selected"}</p>
-                  <div className="pdf-page-metadata">
-                    <span>Page {pdfPage}</span>
-                    <span>{Math.round(pdfZoom * 100)}%</span>
-                  </div>
-                  <div className="pdf-sample-lines">
-                    <span>Topic summary</span>
-                    <span>Key facts</span>
-                    <span>Definition</span>
-                    <span>Examples</span>
-                    <span>Exam angle</span>
-                  </div>
-                </div>
+            <div className="pdf-placeholder" style={{ padding: 20 }}>
+              <span className="eyebrow">REFERENCE PAGE</span>
+              <h3>{pdfDocumentName}</h3>
+              <p>{pdfName ?? "No document selected"}</p>
+              <div className="pdf-page-metadata">
+                <span>Page {pdfPage}</span>
+                <span>{Math.round(pdfZoom * 100)}%</span>
               </div>
             </div>
           )}

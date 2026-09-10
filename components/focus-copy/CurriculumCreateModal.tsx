@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import toast from "react-hot-toast";
 import {
   Dialog,
   DialogContent,
@@ -66,7 +67,13 @@ export function CurriculumCreateModal({
     event.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setErrorMessage("Please enter a name before saving.");
+      const msg = "Please enter a name before saving.";
+      setErrorMessage(msg);
+      try {
+        toast.error(msg);
+      } catch (e) {
+        /* noop */
+      }
       return;
     }
 
@@ -82,9 +89,14 @@ export function CurriculumCreateModal({
       setErrorMessage("");
       onClose();
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Unable to save this item.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Unable to save this item.";
+      setErrorMessage(message);
+      try {
+        toast.error(message);
+      } catch (e) {
+        /* noop */
+      }
     } finally {
       setIsSubmitting(false);
     }

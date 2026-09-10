@@ -17,7 +17,9 @@ import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { useCurriculum } from "./useCurriculum";
 import { useMapPanel } from "./useMapPanel";
 import { useNote } from "./useNote";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { usePdfPanel } from "./usePdfPanel";
+import toast from "react-hot-toast";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
@@ -51,6 +53,10 @@ export default function StudyWorkspace() {
     setExpanded,
     selectedTopic,
   } = useCurriculum();
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const editor = useEditor({
     extensions: [
@@ -275,6 +281,18 @@ export default function StudyWorkspace() {
     );
   }, [activeMap, isMapOpen]);
 
+  // Sync selected topic from URL if provided
+  useEffect(() => {
+    try {
+      const param = searchParams?.get?.("topic");
+      if (param && topics.find((t) => t.id === param)) {
+        setSelectedTopicId(param);
+      }
+    } catch (err) {
+      // ignore
+    }
+  }, [searchParams, topics, setSelectedTopicId]);
+
   const filteredSubjects = useMemo(
     () =>
       subjects.filter((subject) =>
@@ -370,6 +388,11 @@ export default function StudyWorkspace() {
       const createdSubject = data as (typeof subjects)[number];
       setSubjects((items) => [...items, createdSubject]);
       setExpanded((items) => ({ ...items, [createdSubject.id]: true }));
+      try {
+        toast.success("Subject created successfully");
+      } catch (err) {
+        /* noop */
+      }
       return;
     }
 
@@ -407,6 +430,15 @@ export default function StudyWorkspace() {
     setTopics((items) => [...items, createdTopic]);
     setExpanded((items) => ({ ...items, [targetSubjectId]: true }));
     setSelectedTopicId(createdTopic.id);
+    try {
+      toast.success(
+        curriculumModal.type === "chapter"
+          ? "Chapter added to subject"
+          : "Topic created",
+      );
+    } catch (err) {
+      /* noop */
+    }
   };
 
   const openCurriculumModal = (
@@ -500,8 +532,21 @@ export default function StudyWorkspace() {
               [subjectId]: !(expanded[subjectId] ?? false),
             }))
           }
-          onSelectTopic={(topicId) => {
+          onSelectTopic={async (topicId) => {
+            try {
+              if (saveStatus === "Unsaved changes") {
+                await saveNote();
+              }
+            } catch (err) {
+              console.error(err);
+            }
             setSelectedTopicId(topicId);
+            try {
+              const next = `${pathname}?topic=${encodeURIComponent(topicId)}`;
+              router.replace(next);
+            } catch (err) {
+              /* ignore */
+            }
             setShowMobileSidebar(false);
           }}
           onAddChapter={(subjectId) =>
