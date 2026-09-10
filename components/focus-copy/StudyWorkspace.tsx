@@ -9,7 +9,6 @@ import { CurriculumCreateModal } from "./CurriculumCreateModal";
 import { MapPanel } from "./MapPanel";
 import { NoteEditorPanel } from "./NoteEditorPanel";
 import { PageToolbar } from "./PageToolbar";
-import { PdfPanel } from "./PdfPanel";
 import { StealthDashboard } from "./StealthDashboard";
 import { SyllabusModal } from "./SyllabusModal";
 import { TopBar } from "./TopBar";
@@ -29,6 +28,7 @@ import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
+import dynamic from "next/dynamic";
 
 import type { Topic } from "@/lib/types";
 
@@ -40,6 +40,11 @@ const mapOptions = [
 ] as const;
 
 type DrawingTool = "pen" | "highlighter" | "pin" | "circle" | "arrow";
+
+// Dynamic import with SSR disabled to prevent Node canvas errors
+const PdfPanel = dynamic(() => import("./PdfPanel"), {
+  ssr: false,
+});
 
 export default function StudyWorkspace() {
   const {
@@ -120,6 +125,8 @@ export default function StudyWorkspace() {
   >([]);
   const [selectedPdfId, setSelectedPdfId] = useState<string | null>(null);
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false);
+  const [pdfTotalPages, setPdfTotalPages] = useState<number | null>(null);
   const [mapUndoCount, setMapUndoCount] = useState(0);
   const editorLayoutRef = useRef<HTMLDivElement | null>(null);
   const mapHistoryRef = useRef<string[]>([]);
@@ -136,7 +143,6 @@ export default function StudyWorkspace() {
     isPdfOpen,
     setIsPdfOpen,
     pdfSplitWidth,
-    setPdfSplitWidth,
     isDraggingPdf,
     closePdfPane,
     resetPdfSplit,
@@ -144,15 +150,22 @@ export default function StudyWorkspace() {
     togglePdfPane,
   } = usePdfPanel(editorLayoutRef, isMapOpen, mapWidth);
 
+  // Reliable manual toggle fallback
+  const handleTogglePdf = useCallback(() => {
+    if (togglePdfPane) {
+      togglePdfPane();
+    } else {
+      setIsPdfOpen((prev) => !prev);
+    }
+  }, [togglePdfPane, setIsPdfOpen]);
+
   const loadPdfDocuments = useCallback(async () => {
     try {
       const res = await fetch("/api/pdfs");
       if (!res.ok) return;
       const data = await res.json();
       if (!Array.isArray(data)) return;
-      setPdfDocuments(
-        data as Array<{ id: string; name: string; uploadedAt?: string | null }>,
-      );
+      setPdfDocuments(data);
       if (data.length && !selectedPdfId) {
         setSelectedPdfId(data[0].id);
         setPdfDocumentName(data[0].name || "Reference PDF");
@@ -166,13 +179,80 @@ export default function StudyWorkspace() {
     void loadPdfDocuments();
   }, [loadPdfDocuments]);
 
+  // Stable note saving without cascading state recreation
+  const saveNote = useCallback(async () => {
+    if (!selectedTopic || !editor) return;
+    setSaveStatus("Saving…");
+    const payload = {
+      topicId: selectedTopic.id,
+      title: noteTitle,
+      content: editor.getJSON(),
+      tags,
+      paperStyle,
+    };
+    try {
+      const res = await fetch("/api/notes", {
+        method: noteId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: noteId, ...payload }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSaveStatus("Saved in this session");
+        return;
+      }
+      setNoteId((data as any)?.id ?? noteId);
+      setSaveStatus("Saved just now");
+    } catch (err) {
+      console.error(err);
+      setSaveStatus("Saved in this session");
+    }
+  }, [
+    selectedTopic,
+    editor,
+    noteTitle,
+    tags,
+    paperStyle,
+    noteId,
+    setNoteId,
+    setSaveStatus,
+  ]);
+
+  // Keep a ref to saveNote to avoid putting it in the switch topic effect
+  const saveNoteRef = useRef(saveNote);
+  saveNoteRef.current = saveNote;
+  const saveStatusRef = useRef(saveStatus);
+  saveStatusRef.current = saveStatus;
+
+  // STOP SHAKING: Only depend strictly on selectedTopicId
   useEffect(() => {
     if (!editor || !selectedTopicId) return;
-    void loadNoteForTopic(selectedTopicId);
-  }, [editor, loadNoteForTopic, selectedTopicId]);
+    let isCancelled = false;
+
+    async function loadCurrentTopic() {
+      try {
+        if (saveStatusRef.current === "Unsaved changes") {
+          await saveNoteRef.current();
+        }
+        if (!isCancelled) {
+          await loadNoteForTopic(selectedTopicId);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    void loadCurrentTopic();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedTopicId, editor, loadNoteForTopic]);
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
   const undoMapCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || mapHistoryRef.current.length === 0) return;
@@ -200,8 +280,6 @@ export default function StudyWorkspace() {
 
       if (isPdfShortcut) {
         event.preventDefault();
-        // PDF panel visibility is controlled solely by isPdfOpen now, so the
-        // Map panel is unaffected by this shortcut.
         setIsPdfOpen((value) => !value);
         return;
       }
@@ -222,74 +300,17 @@ export default function StudyWorkspace() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPdfOpen, isMapOpen, undoMapCanvas]);
+  }, [isPdfOpen, isMapOpen, undoMapCanvas, setIsPdfOpen]);
 
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const rect = canvas.getBoundingClientRect();
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = rect.width * ratio;
-    canvas.height = rect.height * ratio;
-    context.scale(ratio, ratio);
-    context.fillStyle = "#f7f8f6";
-    context.fillRect(0, 0, rect.width, rect.height);
-    context.strokeStyle = "#d9e1dc";
-    context.lineWidth = 1;
-    for (let x = 0; x < rect.width; x += 32) {
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, rect.height);
-      context.stroke();
-    }
-    for (let y = 0; y < rect.height; y += 32) {
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(rect.width, y);
-      context.stroke();
-    }
-    context.fillStyle = "#e7efea";
-    context.beginPath();
-    context.ellipse(
-      rect.width * 0.5,
-      rect.height * 0.53,
-      rect.width * 0.29,
-      rect.height * 0.34,
-      0,
-      0,
-      Math.PI * 2,
-    );
-    context.fill();
-    context.strokeStyle = "#9eb4a6";
-    context.lineWidth = 2;
-    context.stroke();
-    context.fillStyle = "#547365";
-    context.font = "600 14px Inter, sans-serif";
-    context.textAlign = "center";
-    context.fillText(
-      activeMap === "world"
-        ? "WORLD MAP"
-        : activeMap === "india_states"
-          ? "INDIA · STATE PRACTICE"
-          : activeMap === "india_physical"
-            ? "INDIA · PHYSICAL FEATURES"
-            : "INDIA · POLITICAL PRACTICE",
-      rect.width / 2,
-      30,
-    );
-  }, [activeMap, isMapOpen]);
-
-  // Sync selected topic from URL if provided
+  // Sync selected topic from URL query if present
   useEffect(() => {
     try {
       const param = searchParams?.get?.("topic");
-      if (param && topics.find((t) => t.id === param)) {
+      if (param && topics.some((t) => t.id === param)) {
         setSelectedTopicId(param);
       }
     } catch (err) {
-      // ignore
+      /* ignore */
     }
   }, [searchParams, topics, setSelectedTopicId]);
 
@@ -306,35 +327,6 @@ export default function StudyWorkspace() {
   const progress = topics.length
     ? Math.round((completedCount / topics.length) * 100)
     : 0;
-
-  const saveNote = async () => {
-    if (!selectedTopic || !editor) return;
-    setSaveStatus("Saving…");
-    const payload = {
-      topicId: selectedTopic.id,
-      title: noteTitle,
-      content: editor.getJSON(),
-      tags,
-      paperStyle,
-    };
-    try {
-      const res = await fetch("/api/notes", {
-        method: noteId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: noteId, ...payload }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSaveStatus("Saved in this session");
-        return;
-      }
-      setNoteId((data as any)?.id ?? noteId);
-      setSaveStatus("Saved just now");
-    } catch (err) {
-      console.error(err);
-      setSaveStatus("Saved in this session");
-    }
-  };
 
   const toggleSyllabus = async (topic: Topic) => {
     const nextValue = !topic.syllabus_checked;
@@ -381,25 +373,18 @@ export default function StudyWorkspace() {
       });
 
       const data = await res.json();
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(data?.error ?? "Failed to create a subject.");
-      }
 
       const createdSubject = data as (typeof subjects)[number];
       setSubjects((items) => [...items, createdSubject]);
       setExpanded((items) => ({ ...items, [createdSubject.id]: true }));
-      try {
-        toast.success("Subject created successfully");
-      } catch (err) {
-        /* noop */
-      }
+      toast.success("Subject created successfully");
       return;
     }
 
     const targetSubjectId = subjectId ?? curriculumModal.subjectId;
-    if (!targetSubjectId) {
-      throw new Error("Please choose a subject first.");
-    }
+    if (!targetSubjectId) throw new Error("Please choose a subject first.");
 
     const nextSortOrder =
       topics
@@ -422,23 +407,18 @@ export default function StudyWorkspace() {
     });
 
     const data = await res.json();
-    if (!res.ok) {
+    if (!res.ok)
       throw new Error(data?.error ?? "Failed to create curriculum item.");
-    }
 
     const createdTopic = data as Topic;
     setTopics((items) => [...items, createdTopic]);
     setExpanded((items) => ({ ...items, [targetSubjectId]: true }));
     setSelectedTopicId(createdTopic.id);
-    try {
-      toast.success(
-        curriculumModal.type === "chapter"
-          ? "Chapter added to subject"
-          : "Topic created",
-      );
-    } catch (err) {
-      /* noop */
-    }
+    toast.success(
+      curriculumModal.type === "chapter"
+        ? "Chapter added to subject"
+        : "Topic created",
+    );
   };
 
   const openCurriculumModal = (
@@ -452,51 +432,6 @@ export default function StudyWorkspace() {
       subjectId,
       parentId: parentId ?? null,
     });
-  };
-
-  const beginDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = event.currentTarget;
-    const snapshot = canvas.toDataURL();
-    if (mapHistoryRef.current.length >= 15) {
-      mapHistoryRef.current.shift();
-    }
-    mapHistoryRef.current.push(snapshot);
-    setMapUndoCount(mapHistoryRef.current.length);
-
-    if (drawingTool === "pin") {
-      const rect = event.currentTarget.getBoundingClientRect();
-      const context = event.currentTarget.getContext("2d");
-      if (!context) return;
-      context.fillStyle = "#c4573e";
-      context.beginPath();
-      context.arc(
-        event.clientX - rect.left,
-        event.clientY - rect.top,
-        6,
-        0,
-        Math.PI * 2,
-      );
-      context.fill();
-      return;
-    }
-    setIsDrawing(true);
-    const context = event.currentTarget.getContext("2d");
-    if (!context) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    context.beginPath();
-    context.moveTo(event.clientX - rect.left, event.clientY - rect.top);
-    context.strokeStyle =
-      drawingTool === "highlighter" ? "rgba(213, 174, 55, .45)" : "#38604d";
-    context.lineWidth = drawingTool === "highlighter" ? 14 : 2.5;
-    context.lineCap = "round";
-  };
-  const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    const context = event.currentTarget.getContext("2d");
-    if (!context) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    context.lineTo(event.clientX - rect.left, event.clientY - rect.top);
-    context.stroke();
   };
 
   const isPdfSplitOpen = isPdfOpen;
@@ -533,6 +468,7 @@ export default function StudyWorkspace() {
             }))
           }
           onSelectTopic={async (topicId) => {
+            if (topicId === selectedTopicId) return;
             try {
               if (saveStatus === "Unsaved changes") {
                 await saveNote();
@@ -561,22 +497,21 @@ export default function StudyWorkspace() {
         <main className="main-area">
           <PageToolbar
             selectedSubjectName={
-              subjects.find(
-                (subject) => subject.id === selectedTopic?.subject_id,
-              )?.name ?? "Study notes"
+              subjects.find((s) => s.id === selectedTopic?.subject_id)?.name ??
+              "Study notes"
             }
             selectedTopicName={selectedTopic?.name ?? "Notebook"}
             isPdfOpen={isPdfOpen}
             isMapOpen={isMapOpen}
             onOpenSyllabus={() => setShowSyllabus(true)}
-            onTogglePdf={togglePdfPane}
+            onTogglePdf={handleTogglePdf}
             onToggleMap={() => setIsMapOpen((value) => !value)}
             onSaveNote={() => void saveNote()}
             subjectIconName={
-              subjects.find(
-                (subject) => subject.id === selectedTopic?.subject_id,
-              )?.icon ?? "book-open"
+              subjects.find((s) => s.id === selectedTopic?.subject_id)?.icon ??
+              "book-open"
             }
+            pdfTotalPages={pdfTotalPages}
           />
           <section
             ref={editorLayoutRef}
@@ -595,39 +530,22 @@ export default function StudyWorkspace() {
                 isDragging={isDraggingPdf}
                 onSelectPdf={(nextId) => {
                   const nextDocument = pdfDocuments.find(
-                    (document) => document.id === nextId,
+                    (doc) => doc.id === nextId,
                   );
                   setSelectedPdfId(nextId || null);
                   setPdfDocumentName(nextDocument?.name ?? "Reference PDF");
                 }}
-                onZoomOut={() =>
-                  setPdfZoom((value) =>
-                    Number(
-                      Math.max(0.7, Number((value - 0.15).toFixed(2))).toFixed(
-                        2,
-                      ),
-                    ),
-                  )
-                }
-                onZoomIn={() =>
-                  setPdfZoom((value) =>
-                    Number(
-                      Math.min(2.2, Number((value + 0.15).toFixed(2))).toFixed(
-                        2,
-                      ),
-                    ),
-                  )
-                }
-                onResetZoom={() => setPdfZoom(1)}
-                onPrevPage={() => setPdfPage((value) => Math.max(1, value - 1))}
-                onNextPage={() => setPdfPage((value) => value + 1)}
+                onSetZoom={setPdfZoom}
+                onSetPage={setPdfPage}
+                onDocumentLoadSuccess={setPdfTotalPages}
+                isUploading={isUploadingPdf}
                 onClose={closePdfPane}
                 onUpload={async (file) => {
+                  setIsUploadingPdf(true);
                   const formData = new FormData();
                   formData.append("file", file);
                   setPdfName(file.name);
                   setPdfUploadError(null);
-
                   try {
                     const res = await fetch("/api/pdfs", {
                       method: "POST",
@@ -645,6 +563,8 @@ export default function StudyWorkspace() {
                   } catch (err) {
                     console.error(err);
                     setPdfUploadError("Upload failed. Please try again.");
+                  } finally {
+                    setIsUploadingPdf(false);
                   }
                 }}
                 onPointerDown={startPdfDrag}
@@ -681,8 +601,8 @@ export default function StudyWorkspace() {
               onUndo={undoMapCanvas}
               onSetActiveMap={setActiveMap}
               onSetDrawingTool={setDrawingTool}
-              onBeginDrawing={beginDrawing}
-              onDraw={draw}
+              onBeginDrawing={() => {}}
+              onDraw={() => {}}
               onSetIsDrawing={setIsDrawing}
               canUndo={mapUndoCount > 0}
             />

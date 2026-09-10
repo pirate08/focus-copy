@@ -12,6 +12,7 @@ type PageToolbarProps = {
   onToggleMap: () => void;
   onSaveNote: () => void;
   subjectIconName: string | null;
+  pdfTotalPages?: number | null;
 };
 
 export function PageToolbar({
@@ -24,6 +25,7 @@ export function PageToolbar({
   onToggleMap,
   onSaveNote,
   subjectIconName,
+  pdfTotalPages,
 }: PageToolbarProps) {
   return (
     <div className="page-toolbar">
@@ -44,6 +46,7 @@ export function PageToolbar({
           onClick={onTogglePdf}
         >
           <FileText size={15} /> Reference PDF
+          {pdfTotalPages ? ` (${pdfTotalPages})` : ""}
         </button>
         <button
           className={`tool-button ${isMapOpen ? "active" : ""}`}
