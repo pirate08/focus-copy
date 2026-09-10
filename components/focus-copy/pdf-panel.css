@@ -1,0 +1,260 @@
+/* Scoped styles for the PDF reference panel. Class names are prefixed
+   with "pdfp-" so they can't collide with anything else in the app. */
+
+.pdfp-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-right: 1px solid #e5e7eb;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.pdfp-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.pdfp-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pdfp-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #8a8f98;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pdfp-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  text-overflow: ellipsis;
+}
+
+.pdfp-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: #6b7280;
+  cursor: pointer;
+}
+.pdfp-close:hover {
+  background: #f1f1f1;
+  color: #111;
+}
+
+.pdfp-row-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.pdfp-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #f4f4f5;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.pdfp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pdfp-btn:hover:not(:disabled) {
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.pdfp-btn:disabled {
+  color: #c7c9cd;
+  cursor: not-allowed;
+}
+
+.pdfp-page-indicator {
+  font-size: 12px;
+  color: #4b5563;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.pdfp-zoom-label {
+  font-size: 12px;
+  color: #4b5563;
+  min-width: 34px;
+  text-align: center;
+}
+
+.pdfp-upload {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.pdfp-upload-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed #d6d6d6;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.pdfp-upload-card input[type="file"] {
+  display: none;
+}
+.pdfp-upload-text strong {
+  display: block;
+  font-size: 13px;
+  color: #111;
+}
+.pdfp-upload-text span {
+  font-size: 11px;
+  color: #8a8f98;
+}
+.pdfp-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #d64545;
+}
+
+/* The viewer must be an explicit flex child that's allowed to shrink
+   (min-height: 0) and scroll — this is what was collapsing before. */
+.pdfp-viewer {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: #eceef1;
+}
+
+.pdfp-canvas-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 40px;
+}
+
+.pdfp-canvas-scroll .react-pdf__Document {
+  display: flex;
+  justify-content: center;
+}
+
+.pdfp-canvas-scroll canvas {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  border-radius: 3px;
+}
+
+.pdfp-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 24px;
+  color: #6b7280;
+}
+.pdfp-placeholder h3 {
+  font-size: 14px;
+  color: #111;
+  margin: 0;
+}
+.pdfp-placeholder p {
+  font-size: 12px;
+  margin: 0;
+}
+
+/* Skeleton */
+.pdfp-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  gap: 12px;
+}
+.pdfp-skeleton-page {
+  width: 78%;
+  max-width: 380px;
+  aspect-ratio: 0.75;
+  border-radius: 6px;
+  background: linear-gradient(100deg, #e6e7e9 30%, #f2f3f4 50%, #e6e7e9 70%);
+  background-size: 200% 100%;
+  animation: pdfp-shimmer 1.4s ease-in-out infinite;
+}
+.pdfp-skeleton-line {
+  width: 60%;
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(100deg, #e6e7e9 30%, #f2f3f4 50%, #e6e7e9 70%);
+  background-size: 200% 100%;
+  animation: pdfp-shimmer 1.4s ease-in-out infinite;
+}
+.pdfp-skeleton-line.short {
+  width: 38%;
+}
+@keyframes pdfp-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Splitter (unchanged behaviour, kept here so it ships with the panel) */
+.pdfp-splitter {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+.pdfp-splitter:hover,
+.pdfp-splitter.dragging {
+  background: #dbe4ff;
+}

@@ -1,10 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Upload, X } from "lucide-react";
+import {
+  Upload,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import "./pdf-panel.css";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.0;
@@ -25,13 +34,15 @@ type PdfPanelProps = {
   onSetZoom: (value: number) => void;
   onSetPage: (value: number) => void;
   onDocumentLoadSuccess?: (numPages: number) => void;
+  /** Called when the user wants to delete the selected PDF. */
+  onDeletePdf?: (id: string) => Promise<void>;
   onClose: () => void;
   onUpload: (file: File) => Promise<void>;
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
   onDoubleClick: () => void;
 };
 
-export function PdfPanel({
+function PdfPanel({
   pdfSplitWidth,
   selectedPdfId,
   pdfDocumentName,
@@ -46,6 +57,7 @@ export function PdfPanel({
   onSetZoom,
   onSetPage,
   onDocumentLoadSuccess,
+  onDeletePdf,
   onClose,
   onUpload,
   onPointerDown,
@@ -57,14 +69,12 @@ export function PdfPanel({
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
 
-  // Safely assign PDF.js worker only on client mount via unpkg CDN
   useEffect(() => {
     if (typeof window !== "undefined") {
-      pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+      pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
     }
   }, []);
 
-  // Reset viewer state whenever a different document is picked
   useEffect(() => {
     setNumPages(null);
     setPageWidth(null);
@@ -82,7 +92,8 @@ export function PdfPanel({
     [onDocumentLoadSuccess, onSetPage, pdfPage],
   );
 
-  const handleDocumentError = useCallback(() => {
+  const handleDocumentError = useCallback((error: Error) => {
+    console.error("PDF load error:", error);
     setIsDocLoading(false);
     setDocError("Couldn't load this PDF. Try re-uploading it.");
   }, []);
@@ -90,6 +101,25 @@ export function PdfPanel({
   const handlePageLoad = useCallback((page: any) => {
     setPageWidth((current) => current ?? (page.originalWidth as number));
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Prefer a bundled worker in public/ for predictable loading.
+    try {
+      pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("Could not set pdfjs workerSrc:", err);
+    }
+  }, []);
+
+  const zoomOut = () =>
+    onSetZoom(Number(Math.max(MIN_ZOOM, pdfZoom - ZOOM_STEP).toFixed(2)));
+  const zoomIn = () =>
+    onSetZoom(Number(Math.min(MAX_ZOOM, pdfZoom + ZOOM_STEP).toFixed(2)));
+  const goPrev = () => onSetPage(Math.max(1, pdfPage - 1));
+  const goNext = () =>
+    onSetPage(numPages ? Math.min(numPages, pdfPage + 1) : pdfPage + 1);
 
   const fitToWidth = useCallback(() => {
     const container = containerRef.current;
@@ -102,36 +132,23 @@ export function PdfPanel({
     onSetZoom(Number(fitted.toFixed(2)));
   }, [onSetZoom, pageWidth]);
 
-  useEffect(() => {
-    if (pageWidth) fitToWidth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageWidth, selectedPdfId]);
-
-  const zoomOut = () =>
-    onSetZoom(Number(Math.max(MIN_ZOOM, pdfZoom - ZOOM_STEP).toFixed(2)));
-  const zoomIn = () =>
-    onSetZoom(Number(Math.min(MAX_ZOOM, pdfZoom + ZOOM_STEP).toFixed(2)));
-  const goPrev = () => onSetPage(Math.max(1, pdfPage - 1));
-  const goNext = () =>
-    onSetPage(numPages ? Math.min(numPages, pdfPage + 1) : pdfPage + 1);
-
   const showSkeleton = isUploading || isDocLoading;
 
   return (
     <>
       <aside
-        className="pdf-panel"
+        className="pdfp-panel"
         style={{
           width: `${pdfSplitWidth}px`,
           flexBasis: `${pdfSplitWidth}px`,
           flexShrink: 0,
         }}
       >
-        <div className="pdf-toolbar single">
-          <div className="pdf-toolbar-left">
-            <span className="eyebrow">REFERENCE MATERIAL</span>
+        <div className="pdfp-toolbar">
+          <div className="pdfp-row-top">
+            <span className="pdfp-eyebrow">REFERENCE</span>
             <select
-              className="pdf-doc-select"
+              className="pdfp-select"
               value={selectedPdfId ?? ""}
               onChange={(event) => onSelectPdf(event.target.value)}
             >
@@ -145,54 +162,91 @@ export function PdfPanel({
                 <option value="">No PDFs uploaded yet</option>
               )}
             </select>
-          </div>
-
-          <div className="pdf-toolbar-center">
-            <button
-              type="button"
-              className="icon-button small"
-              onClick={goPrev}
-              disabled={pdfPage <= 1}
-              aria-label="Previous page"
-            >
-              ◀
-            </button>
-            <div className="pdf-page-indicator">
-              Page {pdfPage}
-              {numPages ? ` / ${numPages}` : ""}
-            </div>
-            <button
-              type="button"
-              className="icon-button small"
-              onClick={goNext}
-              disabled={!!numPages && pdfPage >= numPages}
-              aria-label="Next page"
-            >
-              ▶
-            </button>
-            <div className="pdf-zoom">
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button
                 type="button"
-                className="icon-button small"
+                className="pdfp-delete"
+                onClick={async () => {
+                  if (!selectedPdfId) return;
+                  const ok = window.confirm(
+                    "Delete this PDF? This action cannot be undone.",
+                  );
+                  if (!ok) return;
+                  try {
+                    await onDeletePdf?.(selectedPdfId);
+                  } catch (err) {
+                    // parent will show errors via toast
+                  }
+                }}
+                aria-label="Delete PDF"
+                title="Delete PDF"
+                disabled={!selectedPdfId}
+              >
+                <Trash2 size={14} />
+              </button>
+
+              <button
+                type="button"
+                className="pdfp-close"
+                onClick={onClose}
+                aria-label="Close PDF pane"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="pdfp-row-controls">
+            <div className="pdfp-group">
+              <button
+                type="button"
+                className="pdfp-btn"
+                onClick={goPrev}
+                disabled={pdfPage <= 1}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="pdfp-page-indicator">
+                {pdfPage}
+                {numPages ? ` / ${numPages}` : ""}
+              </span>
+              <button
+                type="button"
+                className="pdfp-btn"
+                onClick={goNext}
+                disabled={!!numPages && pdfPage >= numPages}
+                aria-label="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            <div className="pdfp-group">
+              <button
+                type="button"
+                className="pdfp-btn"
                 onClick={zoomOut}
                 disabled={pdfZoom <= MIN_ZOOM}
                 aria-label="Zoom out"
               >
-                −
+                <Minus size={13} />
               </button>
-              <div className="pdf-zoom-label">{Math.round(pdfZoom * 100)}%</div>
+              <span className="pdfp-zoom-label">
+                {Math.round(pdfZoom * 100)}%
+              </span>
               <button
                 type="button"
-                className="icon-button small"
+                className="pdfp-btn"
                 onClick={zoomIn}
                 disabled={pdfZoom >= MAX_ZOOM}
                 aria-label="Zoom in"
               >
-                +
+                <Plus size={13} />
               </button>
               <button
                 type="button"
-                className="icon-button small"
+                className="pdfp-btn"
                 onClick={fitToWidth}
                 aria-label="Fit to width"
               >
@@ -200,21 +254,10 @@ export function PdfPanel({
               </button>
             </div>
           </div>
-
-          <div className="pdf-toolbar-right">
-            <button
-              type="button"
-              className="icon-button small pdf-close"
-              onClick={onClose}
-              aria-label="Close PDF pane"
-            >
-              <X size={15} />
-            </button>
-          </div>
         </div>
 
-        <div className="pdf-upload">
-          <label className="upload-card compact">
+        <div className="pdfp-upload">
+          <label className="pdfp-upload-card">
             <input
               type="file"
               accept="application/pdf"
@@ -225,32 +268,33 @@ export function PdfPanel({
                 await onUpload(file);
               }}
             />
-            <Upload size={22} />
-            <strong>{pdfName ?? "Add a PDF reference"}</strong>
-            <span>
-              {pdfName ? "Ready to compare" : "PDF files up to 20 MB"}
+            <Upload size={18} />
+            <span className="pdfp-upload-text">
+              <strong>{pdfName ?? "Add a PDF reference"}</strong>
+              <span>
+                {pdfName ? "Ready to compare" : "PDF files up to 20 MB"}
+              </span>
             </span>
           </label>
           {pdfUploadError && (
-            <small className="error-text">{pdfUploadError}</small>
+            <small className="pdfp-error">{pdfUploadError}</small>
           )}
         </div>
 
-        <div className="pdf-viewer" ref={containerRef}>
+        <div className="pdfp-viewer" ref={containerRef}>
           {showSkeleton ? (
-            <div className="pdf-skeleton" style={{ padding: 24 }}>
-              <div className="skeleton-header" />
-              <div className="skeleton-line" />
-              <div className="skeleton-line short" />
-              <div className="skeleton-page" />
+            <div className="pdfp-skeleton">
+              <div className="pdfp-skeleton-line" />
+              <div className="pdfp-skeleton-line short" />
+              <div className="pdfp-skeleton-page" />
             </div>
           ) : docError ? (
-            <div className="pdf-placeholder" style={{ padding: 20 }}>
-              <span className="eyebrow">REFERENCE PAGE</span>
+            <div className="pdfp-placeholder">
+              <span className="pdfp-eyebrow">REFERENCE PAGE</span>
               <p>{docError}</p>
             </div>
           ) : selectedPdfId ? (
-            <div className="pdf-canvas-scroll">
+            <div className="pdfp-canvas-scroll">
               <Document
                 file={`/api/pdfs/${selectedPdfId}`}
                 onLoadSuccess={handleDocumentLoad}
@@ -268,8 +312,7 @@ export function PdfPanel({
               </Document>
             </div>
           ) : (
-            <div className="pdf-placeholder" style={{ padding: 20 }}>
-              <span className="eyebrow">REFERENCE PAGE</span>
+            <div className="pdfp-placeholder">
               <h3>{pdfDocumentName}</h3>
               <p>{pdfName ?? "No document selected"}</p>
             </div>
@@ -278,7 +321,7 @@ export function PdfPanel({
       </aside>
 
       <div
-        className={`splitter ${isDragging ? "dragging" : ""}`}
+        className={`pdfp-splitter ${isDragging ? "dragging" : ""}`}
         onPointerDown={onPointerDown}
         onDoubleClick={onDoubleClick}
         role="separator"
@@ -290,5 +333,4 @@ export function PdfPanel({
   );
 }
 
-// Added default export to satisfy dynamic imports cleanly
 export default PdfPanel;

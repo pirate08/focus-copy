@@ -175,6 +175,31 @@ export default function StudyWorkspace() {
     }
   }, [selectedPdfId]);
 
+  const handleDeletePdf = useCallback(
+    async (id: string) => {
+      if (!id) return;
+      try {
+        const res = await fetch(`/api/pdfs/${id}`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(data?.error ?? "Failed to delete PDF");
+          return;
+        }
+        setPdfDocuments((items) => items.filter((d) => d.id !== id));
+        if (selectedPdfId === id) {
+          const next = pdfDocuments.find((d) => d.id !== id);
+          setSelectedPdfId(next?.id ?? null);
+          setPdfDocumentName(next?.name ?? "Reference PDF");
+        }
+        toast.success("PDF deleted");
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to delete PDF");
+      }
+    },
+    [pdfDocuments, selectedPdfId],
+  );
+
   useEffect(() => {
     void loadPdfDocuments();
   }, [loadPdfDocuments]);
