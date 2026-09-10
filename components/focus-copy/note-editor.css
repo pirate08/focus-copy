@@ -1,0 +1,127 @@
+/* Notebook page visuals — REPLACE the equivalent block in note-editor.css
+   with this one. This is only the "Notebook page visuals" section; leave
+   the rest of your note-editor.css (editor-panel, note-header, toolbar,
+   etc.) untouched. */
+
+.editor-canvas {
+  position: relative;
+}
+.notebook-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  width: 100%;
+}
+.notebook-viewport {
+  overflow: hidden;
+  width: 100%;
+}
+.notebook-pages {
+  position: relative;
+  will-change: transform;
+  width: 100%;
+}
+.notebook-content {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: white;
+  width: 100%;
+}
+
+/* Paper styles */
+.notebook-content.paper-lined {
+  background-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.03) 1px,
+    transparent 1px
+  );
+  background-size: 100% 28px;
+}
+.notebook-content.paper-grid {
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size:
+    28px 28px,
+    28px 28px;
+}
+.notebook-content.paper-blank {
+  background: #fff;
+}
+
+/* Red margin rule removed — notebook-content no longer has a ::before
+   pseudo-element at all. */
+
+.notebook-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.page-indicator {
+  font-weight: 600;
+}
+
+.paper-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paper-switcher button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.paper-switcher button:hover:not(:disabled) {
+  background: #f4f4f4;
+}
+
+.paper-switcher button.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.paper-switcher .undo-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Force TipTap / ProseMirror to fill 100% width */
+.notebook-content .ProseMirror {
+  width: 100% !important;
+  max-width: 100% !important;
+  outline: none;
+}
+
+/* Ensure child paragraphs, headings, and lists stretch fully */
+.notebook-content .ProseMirror > * {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+/* Optional: reduce horizontal padding if you want text even closer to the edges */
+.notebook-content {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* small responsive tweak */
+@media (max-width: 900px) {
+  .notebook-viewport {
+    width: 100%;
+  }
+}
