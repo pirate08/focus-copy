@@ -57,6 +57,8 @@ export default function StudyWorkspace() {
     expanded,
     setExpanded,
     selectedTopic,
+    renameTopic,
+    deleteTopic,
   } = useCurriculum();
 
   const router = useRouter();
@@ -518,6 +520,46 @@ export default function StudyWorkspace() {
           }
           onOpenSidebar={() => setShowMobileSidebar(false)}
           onCreateSubject={() => openCurriculumModal("subject")}
+          onRenameTopic={async (id: string, name: string) => {
+            try {
+              await renameTopic(id, name);
+              toast.success("Renamed successfully");
+            } catch (err) {
+              console.error(err);
+              toast.error("Failed to rename");
+            }
+          }}
+          onDeleteTopic={async (id: string) => {
+            if (!id) return;
+            try {
+              // decide selection fallback before deleting
+              const currentSelected = selectedTopicId;
+              // find siblings (topics with same parent_id and subject)
+              const target = topics.find((t) => t.id === id);
+              const siblings = topics.filter(
+                (t) =>
+                  t.parent_id === target?.parent_id &&
+                  t.subject_id === target?.subject_id &&
+                  t.id !== id,
+              );
+
+              await deleteTopic(id);
+
+              // update selection if current was deleted
+              if (currentSelected === id) {
+                if (siblings.length) {
+                  setSelectedTopicId(siblings[0].id);
+                } else {
+                  setSelectedTopicId("");
+                }
+              }
+
+              toast.success("Chapter deleted successfully");
+            } catch (err) {
+              console.error(err);
+              toast.error("Failed to delete");
+            }
+          }}
         />
         <main className="main-area">
           <PageToolbar

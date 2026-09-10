@@ -119,6 +119,12 @@ export async function PATCH(request: Request) {
     update.syllabusChecked = Boolean(body.syllabusChecked);
   }
   if (typeof body?.name === "string") update.name = body.name.trim();
+  if (typeof body?.name === "string" && update.name === "") {
+    return NextResponse.json(
+      { error: "Topic name is required." },
+      { status: 400 },
+    );
+  }
   if (typeof body?.sortOrder !== "undefined")
     update.sortOrder = Number(body.sortOrder ?? body.sort_order ?? 0);
 
@@ -137,4 +143,65 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json(serializeTopic(updated));
+}
+
+export async function DELETE(request: Request) {
+  const userId = await getSessionUser(request);
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await connectDB();
+
+  const { searchParams } = new URL(request.url);
+  const queryId = searchParams.get("id") ?? searchParams.get("topicId");
+
+  const body = await request.json().catch(() => ({}));
+  const bodyId = body?.id ?? body?.topicId ?? body?.topic_id;
+
+  const id = queryId ?? bodyId;
+  if (!id) {
+    return NextResponse.json({ error: "Missing topic id." }, { status: 400 });
+  }
+
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const topicObjectId = new mongoose.Types.ObjectId(id);
+
+  // Ensure the topic exists and belongs to the user
+  const root = await TopicModel.findOne({
+    _id: topicObjectId,
+    userId: userObjectId,
+  }).lean();
+  if (!root) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Gather all descendant topic ids (BFS)
+  const toVisit = [topicObjectId];
+  const allIds: mongoose.Types.ObjectId[] = [topicObjectId];
+
+  while (toVisit.length) {
+    const current = toVisit.shift() as mongoose.Types.ObjectId;
+    const children = await TopicModel.find({
+      parentId: current,
+      userId: userObjectId,
+    }).lean();
+    for (const child of children) {
+      const childId = new mongoose.Types.ObjectId(String(child._id));
+      allIds.push(childId);
+      toVisit.push(childId);
+    }
+  }
+
+  // Delete Notes that reference these topics
+  const NoteModel = (await import("../../../lib/models/Note")).default;
+  await NoteModel.deleteMany({
+    topicId: { $in: allIds },
+    userId: userObjectId,
+  });
+
+  // Delete the topics themselves
+  await TopicModel.deleteMany({ _id: { $in: allIds }, userId: userObjectId });
+
+  return NextResponse.json({ success: true, deletedId: String(topicObjectId) });
 }

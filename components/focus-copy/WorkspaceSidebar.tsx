@@ -6,7 +6,18 @@ import {
   Plus,
   Search,
   Settings2,
+  Pencil,
+  Trash2,
 } from "lucide-react";
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 import type { Subject, Topic } from "@/lib/types";
 
@@ -29,6 +40,8 @@ type WorkspaceSidebarProps = {
   onAddTopic: (subjectId: string, parentId?: string | null) => void;
   onOpenSidebar: () => void;
   onCreateSubject: () => void;
+  onRenameTopic?: (id: string, name: string) => Promise<void>;
+  onDeleteTopic?: (id: string) => Promise<void>;
 };
 
 export function WorkspaceSidebar({
@@ -48,7 +61,64 @@ export function WorkspaceSidebar({
   onAddTopic,
   onOpenSidebar,
   onCreateSubject,
+  onRenameTopic,
+  onDeleteTopic,
 }: WorkspaceSidebarProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    type: "chapter" | "topic";
+  } | null>(null);
+
+  const beginEdit = (id: string, name: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setEditingId(id);
+    setEditingValue(name);
+  };
+
+  const cancelEdit = (event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setEditingId(null);
+    setEditingValue("");
+  };
+
+  const confirmEdit = async (id: string) => {
+    if (!editingValue.trim()) return;
+    try {
+      await onRenameTopic?.(id, editingValue.trim());
+    } catch (err) {
+      /* handled upstream */
+    } finally {
+      setEditingId(null);
+      setEditingValue("");
+    }
+  };
+
+  const openDeleteDialog = (
+    id: string,
+    name: string,
+    type: "chapter" | "topic",
+    event?: React.MouseEvent,
+  ) => {
+    event?.stopPropagation();
+    setDeleteTarget({ id, name, type });
+  };
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await onDeleteTopic?.(deleteTarget.id);
+    } catch (err) {
+      /* handled upstream */
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
   return (
     <aside
       className={`sidebar ${showMobileSidebar ? "sidebar-open" : ""} ${isPdfSplitOpen ? "sidebar-hidden" : ""}`}
@@ -126,19 +196,62 @@ export function WorkspaceSidebar({
                           }}
                         >
                           <span className="topic-dot" />
-                          <span className="tree-label">{chapterLabel}</span>
+                          {editingId === chapter.id ? (
+                            <input
+                              autoFocus
+                              className="tree-edit-input"
+                              value={editingValue}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setEditingValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") confirmEdit(chapter.id);
+                                if (e.key === "Escape") cancelEdit();
+                              }}
+                              onBlur={() => confirmEdit(chapter.id)}
+                            />
+                          ) : (
+                            <span className="tree-label">{chapterLabel}</span>
+                          )}
                           {chapter.syllabus_checked && (
                             <Check size={13} className="done-check" />
                           )}
-                          <button
-                            className="tree-add"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onAddTopic(subject.id, chapter.id);
-                            }}
+                          <div
+                            className="row-actions"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <Plus size={14} />
-                          </button>
+                            <button
+                              className="icon-button ghost"
+                              title="Rename"
+                              onClick={(e) =>
+                                beginEdit(chapter.id, chapter.name, e)
+                              }
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              className="icon-button ghost"
+                              title="Delete"
+                              onClick={(e) =>
+                                openDeleteDialog(
+                                  chapter.id,
+                                  chapter.name,
+                                  "chapter",
+                                  e,
+                                )
+                              }
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                            <button
+                              className="tree-add"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onAddTopic(subject.id, chapter.id);
+                              }}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
                         </div>
                         {chapterTopics.length > 0 && (
                           <div className="deep-list">
@@ -152,12 +265,58 @@ export function WorkspaceSidebar({
                                 }}
                               >
                                 <span className="topic-dot active" />
-                                <span className="tree-label">
-                                  {`${subjectNumber}.${chapterIndex + 1}.${topicIndex + 1}. ${topic.name}`}
-                                </span>
+                                {editingId === topic.id ? (
+                                  <input
+                                    autoFocus
+                                    className="tree-edit-input"
+                                    value={editingValue}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) =>
+                                      setEditingValue(e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter")
+                                        confirmEdit(topic.id);
+                                      if (e.key === "Escape") cancelEdit();
+                                    }}
+                                    onBlur={() => confirmEdit(topic.id)}
+                                  />
+                                ) : (
+                                  <span className="tree-label">
+                                    {`${subjectNumber}.${chapterIndex + 1}.${topicIndex + 1}. ${topic.name}`}
+                                  </span>
+                                )}
                                 {topic.syllabus_checked && (
                                   <Check size={13} className="done-check" />
                                 )}
+                                <div
+                                  className="row-actions"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    className="icon-button ghost"
+                                    title="Rename"
+                                    onClick={(e) =>
+                                      beginEdit(topic.id, topic.name, e)
+                                    }
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button
+                                    className="icon-button ghost"
+                                    title="Delete"
+                                    onClick={(e) =>
+                                      openDeleteDialog(
+                                        topic.id,
+                                        topic.name,
+                                        "topic",
+                                        e,
+                                      )
+                                    }
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -174,6 +333,44 @@ export function WorkspaceSidebar({
       <button className="new-subject" onClick={onCreateSubject}>
         <Plus size={15} /> New subject
       </button>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        {deleteTarget && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Delete {deleteTarget.type === "chapter" ? "Chapter" : "Topic"}
+              </DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{deleteTarget.name}"? All
+                nested topics and notes will also be deleted.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <div
+                style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+              >
+                <button
+                  className="btn"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={doDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
       <div className="sidebar-footer">
         <div className="progress-mini">
           <div className="progress-mini-head">
